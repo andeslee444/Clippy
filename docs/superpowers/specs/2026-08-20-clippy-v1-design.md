@@ -190,19 +190,44 @@ identified as tailorable change; everything else is byte-identical.
 
 ### 7.1 Gating is mechanical, not prompted
 
-Every tool in `hands/` statically declares `{ reversible: boolean, outwardFacing: boolean }`.
-`trust.isGated(action)` is a pure function over those flags. The model is never asked whether it
-should confirm — a model that is confused, wrong, or prompt-injected by page content must still be
+Every tool in `hands/` statically declares `{ reversible: boolean, outwardFacing: boolean }`, and
+`trust.isGated()` is a pure function over those flags. The model is never asked whether it should
+confirm — a model that is confused, wrong, or prompt-injected by page content must still be
 structurally unable to reach Submit without a human click.
 
 Prompt instructions are advisory. A flag on the tool definition is not.
 
-The Tool Runner's per-turn hook is where this is enforced: the hook inspects the pending tool call,
-consults `trust.isGated()`, and blocks on `shell.requestApproval()` before the call executes.
+#### The declared kind is not trustworthy
 
-**`trust.isGated()` is to be written by the project author.** It is a short pure predicate encoding
-a personal judgment about acceptable irreversibility. The surrounding types, call sites, and tests
-will be scaffolded for it.
+A first version of this design gated on the action's *kind*: `submit` was flagged irreversible and
+outward-facing, `click` was not. **That is circular, and it does not work.** `submit` and `click` are
+the same operation on the same element; the only thing separating them is the label the model chose
+to emit. A model that emits `{kind: "click", ref: <the Submit button>}` gets an ungated click on
+Submit and an audit line reading `"gated": false`. The gate would be keying off model-supplied data —
+exactly as advisory as the prompt instruction it claims to replace.
+
+Page content makes this reachable rather than merely theoretical: accessible names are attacker-
+controlled text, so a crafted `aria-label` containing a newline can forge an extra line in the
+rendered tree and tell the model that the Submit button is named "Cancel".
+
+**Gating therefore keys off the resolved element, not the declared kind.** Concretely:
+
+1. `hands/` resolves the ref to a real element and derives `{ submitCapable, formAssociated }` from
+   the DOM — `input[type=submit|image]`, a `<button>` inside a form without `type="button"`, or a
+   `role=button` whose activation submits.
+2. The gate is re-evaluated **after** resolution, against the element's derived properties unioned
+   with the tool's static flags.
+3. A `click` on a submit-capable control is **refused**, not silently upgraded. The model must
+   name it `submit`, which gates. Refusal is louder than coercion and shows up in the audit log.
+4. Accessible names are sanitised before rendering: whitespace collapsed on every path, quotes
+   escaped, length capped. Page text can never introduce a line break into the tree.
+
+The static `TOOL_META` table remains the floor, not the ceiling — element-derived properties can
+only ever *add* gating, never remove it.
+
+**The author's decision lives in two places**, and the table is the more consequential one:
+`TOOL_META` (is `upload` really reversible? is `navigate` outward-facing?) and the `isGated()`
+predicate combining static flags with element-derived properties.
 
 ### 7.2 Kill switch
 
@@ -213,6 +238,18 @@ browser, writes the abort to the audit log.
 
 Every action, model call, and cost is written **before** the action executes, not after. A crash
 mid-action must leave evidence that the action was attempted.
+
+#### Effects and observations are different types
+
+`Effect`s change the world and return nothing (`click`, `fill`, `select`, `upload`, `navigate`,
+`submit`). `Observation`s change nothing and return data (`readPage`, `capturePage`). Modelling them
+as one union forces the executor to `Promise<void>`, which means observations cannot flow through it
+and get called directly instead — so nothing observed is ever audited, contradicting the paragraph
+above.
+
+They are therefore separate types with separate paths: `runEffect(e): Promise<void>` gates and
+audits; `observe<T>(o): Promise<T>` audits and returns. Both are audited. Only effects can gate,
+because only effects can be irreversible.
 
 ### 7.4 Resume integrity
 
@@ -250,6 +287,23 @@ guarantee has been traded for a probability.
 CAPTCHAs are never solved or attempted. Encountering one is an immediate STUCK (§8.4). Credentials
 are never typed by Clippy — login walls are also an immediate STUCK, resolved by the user typing
 their own password into their own browser during takeover.
+
+#### Credentials must be excluded from observation, not just from action
+
+"Clippy never types your password" is insufficient, because the danger is on the read path rather
+than the write path. The takeover protocol has the user type their real password into the driven
+browser and hand back — and the very next `readPage()` would collect that field's value into the
+tree, ship it to the model, and write it into `runs/*.jsonl` forever.
+
+`readPage()` therefore **redacts at the source**, before any value leaves the page:
+
+- `input[type=password]` — value replaced with `"•••"`, never collected
+- `autocomplete="cc-*"` (card number, CVC, expiry) — same
+- fields whose name or id matches `/ssn|social|passport|tax|routing|account/i` — same
+
+Redaction happens inside the page-side snapshot function, so the plaintext never crosses into Node.
+The node itself is still emitted — the model needs to know a password field exists to recognise a
+login wall — only the value is withheld.
 
 ## 8. The agent loop
 
@@ -305,6 +359,24 @@ would mean publishing it to a public URL. Never done.
 **Triggers:** a "Look at this page" button in the panel (§9.3), and `ActBrain` may emit `capturePage`
 as an action when the tree comes back uninformative. Same code path. Ungated under §7.1 — read-only
 and reversible — which is comfortable precisely because of the dedicated profile in §3.1.
+
+Values are redacted at the source before leaving the page — see §7.5.
+
+#### The serialization boundary
+
+The snapshot function runs **inside the page**, not in Node. It therefore cannot reference any
+module-scope binding, import, or closure variable — such a reference throws `ReferenceError` in the
+browser while passing every direct-call unit test, because Node resolves it via closure.
+
+Two bugs of exactly this shape were shipped and caught during Plan 1: a module-scope `SELECTOR`
+constant, and then — after a regression test was added — `__name`, a helper that the production
+bundler (`tsx`/esbuild with `keepNames`) injects around named inner functions but the test bundler
+does not. The second one is the instructive case: **the transform is part of the boundary**, so a
+test that serialises under the test bundler is testing a function that will never run.
+
+The structural fix, rather than a per-instance one: page-side code lives in its own plain
+`.js` file that no bundler transforms, loaded as text at runtime. It then physically cannot close
+over module scope, and no one has to remember the rule.
 
 ### 8.3 History compaction
 
