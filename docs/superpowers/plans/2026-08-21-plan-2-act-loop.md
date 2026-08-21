@@ -207,7 +207,7 @@ describe("compactHistory", () => {
     const steps = Array.from({ length: 40 }, () => rec());
     const trees = Array.from({ length: 40 }, (_, i) => `<tree ${i}>`.padEnd(2000, "."));
     // 40 raw trees would be ~80KB. One tree plus 40 short lines is a fraction of that.
-    expect(compactHistory(tools.steps, trees).length).toBeLessThan(8000);
+    expect(compactHistory(steps, trees).length).toBeLessThan(8000);
   });
 
   it("handles an empty history", () => {
@@ -623,7 +623,7 @@ describe("makeTools", () => {
     });
     await makeTools(d).perform({ kind: "click", ref: "g1-r3" });
     expect(d.onStep).toHaveBeenCalledOnce();
-    expect(d.onStep.mock.calls[0]![0].outcome.kind).toBe("retry-free");
+    expect(vi.mocked(d.onStep).mock.calls[0]![0].outcome.kind).toBe("retry-free");
   });
 });
 ```
@@ -674,13 +674,20 @@ export function makeTools(deps: ToolDeps): BrainTools {
         const outcome = classify(err);
         record({ action: effect, outcome, effect: "" });
 
-        if (outcome.kind === "stuck") {
-          return `DECLINED: ${outcome.reason}. Do not retry this. Stop and explain what you were trying to do.`;
+        switch (outcome.kind) {
+          case "stuck":
+            return `DECLINED: ${outcome.reason}. Do not retry this. Stop and explain what you were trying to do.`;
+          case "retry-free":
+            return `STALE: ${outcome.reason} Read the page again to get fresh refs, then re-observe before acting.`;
+          case "retry":
+          case "failed":
+            return `ERROR: ${outcome.reason}`;
+          case "ok":
+            // classify() is only ever called from a catch block, so it never
+            // actually produces "ok" — but its declared return type is the full
+            // StepOutcome union, so this branch exists for exhaustiveness.
+            return "ERROR: unexpected ok outcome from classify()";
         }
-        if (outcome.kind === "retry-free") {
-          return `STALE: ${outcome.reason} Read the page again to get fresh refs, then re-observe before acting.`;
-        }
-        return `ERROR: ${outcome.reason}`;
       }
     },
   };
@@ -860,7 +867,7 @@ export class ClaudeActBrain implements ActBrain {
       // actively mislead.
       if (trees.length > 1) {
         runner.setMessagesParams([
-          { role: "user", content: `${objective.goal}\n\n${compactHistory(steps, trees)}` },
+          { role: "user", content: `${objective.goal}\n\n${compactHistory(tools.steps, trees)}` },
         ]);
       }
     }
