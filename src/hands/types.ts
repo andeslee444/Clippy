@@ -32,8 +32,18 @@ export interface ToolMeta {
  * distinguish a harmless click from a submit. These come from the page.
  */
 export interface ElementFacts {
-  /** Activating this element submits a form. */
+  /** Activating this element submits a form. Derived from the DOM. */
   submitCapable: boolean;
+  /**
+   * The page contains no `<form>` at all, so `submitCapable` is unreliable here.
+   *
+   * Measured against a real Workday job page: zero `<form>` elements, everything
+   * driven by click handlers. `closest("form")` returns null for every element,
+   * so nothing is flagged — including the real submit button. Page-level rather
+   * than element-level, but it conditions how far `submitCapable` can be trusted,
+   * so it travels with it.
+   */
+  formless: boolean;
 }
 
 /**

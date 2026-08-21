@@ -23,11 +23,21 @@ describe("isGated", () => {
   });
 
   it("does not gate a click on an ordinary control", () => {
-    expect(isGated(e({ kind: "click", ref: "g1-r3" }), { submitCapable: false })).toBe(false);
+    expect(isGated(e({ kind: "click", ref: "g1-r3" }), { submitCapable: false, formless: false })).toBe(false);
   });
 
   it("GATES a click on a submit-capable element — the kind is model-supplied", () => {
-    expect(isGated(e({ kind: "click", ref: "g1-r3" }), { submitCapable: true })).toBe(true);
+    expect(isGated(e({ kind: "click", ref: "g1-r3" }), { submitCapable: true, formless: false })).toBe(true);
+  });
+
+  it("GATES any click on a form-less page — submitCapable cannot detect there", () => {
+    // Measured: a real Workday job page has zero <form> elements, so
+    // closest("form") flags nothing, including the real submit button.
+    expect(isGated(e({ kind: "click", ref: "g1-r3" }), { submitCapable: false, formless: true })).toBe(true);
+  });
+
+  it("does not gate non-click effects on a form-less page", () => {
+    expect(isGated(e({ kind: "fill", ref: "g1-r2", value: "x" }), { submitCapable: false, formless: true })).toBe(false);
   });
 
   it("is pure", () => {

@@ -42,8 +42,13 @@ export interface Resolved {
 export async function resolve(page: Page, ref: Ref): Promise<Resolved> {
   const locator = page.locator(`[data-clippy-ref="${ref}"]`);
   if ((await locator.count()) === 0) throw new StaleRefError(ref);
-  const submitCapable = (await locator.getAttribute("data-clippy-submit")) === "1";
-  return { locator, facts: { submitCapable } };
+  // One round trip for both facts. Anonymous arrow passed straight to Playwright,
+  // so it is not subject to the serialisation hazard in §8.2.
+  const facts = await locator.evaluate((el) => ({
+    submitCapable: el.getAttribute("data-clippy-submit") === "1",
+    formless: el.ownerDocument.querySelector("form") === null,
+  }));
+  return { locator, facts };
 }
 
 /**
