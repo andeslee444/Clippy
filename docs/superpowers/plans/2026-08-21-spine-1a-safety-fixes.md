@@ -498,7 +498,7 @@ export async function readPage(page: Page): Promise<Snapshot> {
   const gen = ++generation;
   const nodes = (await page.evaluate(
     ({ src, g }: { src: string; g: number }) =>
-      (new Function("return " + src)() as (d: Document, n: number) => unknown)(document, g),
+      (new Function("return (" + src + ")")() as (d: Document, n: number) => unknown)(document, g),
     { src: PAGE_SCRIPT, g: gen },
   )) as RefNode[];
   return { generation: gen, url: page.url(), title: await page.title(), nodes };
@@ -531,9 +531,15 @@ import { PAGE_SCRIPT, renderSnapshot } from "./snapshot.js";
  * Build the page function the SAME way readPage() does — from the file text,
  * never from `.toString()` on a bundled function. This is the only construction
  * that exercises the production path.
+ *
+ * The parentheses are mandatory, not cosmetic. page-script.js opens with a
+ * `// @ts-check` line comment, so `"return " + src` puts a line terminator
+ * between `return` and the expression — ASI inserts a semicolon, the function
+ * is discarded, and `new Function(...)()` yields `undefined`. Wrapping in
+ * parens keeps the expression on the same line as `return`.
  */
 function loadPageFn(): (doc: Document, generation: number) => any[] {
-  return new Function("return " + PAGE_SCRIPT)();
+  return new Function("return (" + PAGE_SCRIPT + ")")();
 }
 
 function fakeDoc(html: string): Document {
@@ -654,16 +660,22 @@ Expected: PASS — 16 tests.
 
 Then the production runtime, which is where the old code failed:
 
-```bash
-npx tsx -e "
-import { PAGE_SCRIPT } from './src/hands/browser/snapshot.js';
-import { parseHTML } from 'linkedom';
-const fn = new Function('return ' + PAGE_SCRIPT)();
-const d = parseHTML('<html><body><input aria-label=\"x\"><button>Go</button></body></html>').document;
-console.log('tsx OK:', JSON.stringify(fn(d, 1)));
-"
+Write `_check.mjs` at the repo root (`npx tsx -e` cannot resolve relative imports
+on Node 24 — use a driver file, and delete it afterwards):
+
+```js
+import { PAGE_SCRIPT } from "./src/hands/browser/snapshot.js";
+import { parseHTML } from "linkedom";
+const fn = new Function("return (" + PAGE_SCRIPT + ")")();
+const d = parseHTML(`<html><body><input aria-label="x"><button>Go</button></body></html>`).document;
+console.log("typeof fn:", typeof fn);
+console.log("tsx OK:", JSON.stringify(fn(d, 1)));
 ```
-Expected: prints two nodes. **This is the exact invocation that previously threw `__name is not defined`.** If it throws, stop — the bug is not fixed.
+
+Run: `npx tsx _check.mjs && rm _check.mjs`
+Expected: `typeof fn: function`, then two nodes. **This is the exact invocation that
+previously threw `__name is not defined`.** If `typeof fn` is `undefined` or it throws,
+stop — the bug is not fixed.
 
 - [ ] **Step 5: Commit**
 
@@ -1233,7 +1245,7 @@ import { PAGE_SCRIPT } from "../src/hands/browser/snapshot.js";
 import { RefSchema, parseEffect } from "../src/hands/schema.js";
 import { EFFECT_META } from "../src/hands/types.js";
 
-const pageFn = () => new Function("return " + PAGE_SCRIPT)() as any;
+const pageFn = () => new Function("return (" + PAGE_SCRIPT + ")")() as any;
 const doc = (html: string) => parseHTML(`<html><body>${html}</body></html>`).document;
 
 describe("regressions from the Plan 1 review", () => {
@@ -1282,19 +1294,22 @@ Expected: PASS — 8 tests.
 
 - [ ] **Step 3: Verify the production runtime one final time**
 
-```bash
-npx tsx -e "
-import { PAGE_SCRIPT } from './src/hands/browser/snapshot.js';
-import { parseHTML } from 'linkedom';
-const fn = new Function('return ' + PAGE_SCRIPT)();
-const d = parseHTML('<html><body><form><input type=\"password\" value=\"secret\" aria-label=\"pw\"><button>Submit</button></form></body></html>').document;
-const out = fn(d, 1);
+Write `_check.mjs` at the repo root, run it, then delete it:
+
+```js
+import { PAGE_SCRIPT } from "./src/hands/browser/snapshot.js";
+import { parseHTML } from "linkedom";
+const fn = new Function("return (" + PAGE_SCRIPT + ")")();
+if (typeof fn !== "function") { console.error("FAIL: page script did not load"); process.exit(1); }
+const html = `<html><body><form><input type="password" value="secret" aria-label="pw"><button>Submit</button></form></body></html>`;
+const out = fn(parseHTML(html).document, 1);
 console.log(JSON.stringify(out, null, 1));
-if (JSON.stringify(out).includes('secret')) { console.error('FAIL: password leaked'); process.exit(1); }
-if (!out[1].submitCapable) { console.error('FAIL: submit not detected'); process.exit(1); }
-console.log('tsx runtime: OK');
-"
+if (JSON.stringify(out).includes("secret")) { console.error("FAIL: password leaked"); process.exit(1); }
+if (!out[1].submitCapable) { console.error("FAIL: submit not detected"); process.exit(1); }
+console.log("tsx runtime: OK");
 ```
+
+Run: `npx tsx _check.mjs && rm _check.mjs`
 Expected: prints the nodes, then `tsx runtime: OK`.
 
 - [ ] **Step 4: Commit and push**
