@@ -1,5 +1,5 @@
 import { chromium, type Browser, type Page } from "playwright-core";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -49,8 +49,45 @@ export class WrongProfileError extends Error {
   }
 }
 
+/**
+ * The `--user-data-dir` of whatever process is listening on `port`, or null.
+ *
+ * Asks the OS rather than Chrome. `Browser.getBrowserCommandLine` would be the
+ * obvious route, but it refuses unless Chrome was launched with
+ * `--enable-automation` — which sets `navigator.webdriver` and shows the
+ * automation infobar. Those are exactly the bot-detection signals a real
+ * logged-in profile exists to avoid (spec §3.1), so buying profile verification
+ * with that flag would cost the thing it protects.
+ */
+export function profileBehindPort(port: number): string | null {
+  try {
+    const pid = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .trim()
+      .split("\n")[0];
+    if (!pid) return null;
+    const cmd = execFileSync("ps", ["-p", pid, "-o", "command="], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return cmd.match(/--user-data-dir=(\S+)/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Attach to the dedicated profile, verifying it IS the dedicated profile. */
 export async function connect(): Promise<Session> {
+  // Verify BEFORE opening a connection: never hold a CDP handle on a browser we
+  // are about to refuse.
+  const actual = profileBehindPort(PORT);
+  if (actual === null) {
+    throw new Error(`No Chrome on port ${PORT}. Start it with: npm run spine -- --launch`);
+  }
+  if (actual !== PROFILE_DIR) throw new WrongProfileError(actual);
+
   let browser: Browser;
   try {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${PORT}`);
@@ -63,19 +100,6 @@ export async function connect(): Promise<Session> {
   const context = browser.contexts()[0] ?? (await browser.newContext());
   const page = context.pages()[0] ?? (await context.newPage());
 
-  // Verify the profile before handing back anything that can act on it.
-  const cdp = await context.newCDPSession(page);
-  // CDP's Browser.getBrowserCommandLine returns { arguments: string[] }, not
-  // { commandLine: ... } — confirmed against playwright-core's own shipped
-  // Protocol.Browser.getBrowserCommandLineReturnValue type.
-  const { arguments: args } = await cdp.send("Browser.getBrowserCommandLine");
-  const dirArg = args.find((a) => a.startsWith("--user-data-dir="));
-  const actual = dirArg?.slice("--user-data-dir=".length) ?? "(unknown)";
-  if (actual !== PROFILE_DIR) {
-    await browser.close();
-    throw new WrongProfileError(actual);
-  }
-
   console.error(`attached: ${PROFILE_DIR} — ${page.url()}`);
 
   return {
@@ -84,6 +108,8 @@ export async function connect(): Promise<Session> {
     // On a connectOverCDP browser, close() tears down OUR connection and leaves
     // Chrome running. That is what we want — the user's login sessions live in
     // that process and must survive the CLI exiting.
-    close: async () => { await browser.close(); },
+    close: async () => {
+      await browser.close();
+    },
   };
 }

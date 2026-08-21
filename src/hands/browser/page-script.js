@@ -15,7 +15,12 @@
     "input, textarea, select, button, a[href], [role=button], [contenteditable=true]";
   var SENSITIVE_NAME = /ssn|social|passport|tax|routing|account|cvv|cvc/i;
   var REDACTED = "•••";
-  var MAX_NAME = 80;
+  /* Links are the noisy ones — job descriptions are full of them, and 80 chars
+     is plenty to identify one. Form controls carry the actual question text:
+     Greenhouse renders required questions as the label, and 80 chars truncated
+     one mid-sentence, leaving the model unable to tell what was being asked. */
+  var MAX_NAME_LINK = 80;
+  var MAX_NAME_FIELD = 240;
 
   var stale = doc.querySelectorAll("[data-clippy-ref]");
   for (var s = 0; s < stale.length; s++) {
@@ -55,18 +60,29 @@
   /* Page text is attacker-controlled. Collapse whitespace on EVERY path so a
      crafted aria-label cannot forge a line break in the rendered tree, escape
      quotes so it cannot forge a field boundary, and cap the length. */
-  function sanitize(raw) {
+  function sanitize(raw, max) {
     if (!raw) return "";
+    var cap = max || MAX_NAME_FIELD;
     var flat = String(raw).replace(/\s+/g, " ").replace(/"/g, "'").trim();
-    return flat.length > MAX_NAME ? flat.slice(0, MAX_NAME) + "…" : flat;
+    return flat.length > cap ? flat.slice(0, cap) + "…" : flat;
   }
 
-  function nameOf(el) {
+  /* textContent runs adjacent block elements together — a job listing came back
+     as "Anthropic Fellows ProgramLondon, UK" with no separator, which the model
+     cannot split into title and location. innerText respects layout and inserts
+     line breaks, which sanitize() then collapses to spaces. linkedom (tests)
+     has no innerText, so fall back. */
+  function textOf(el) {
+    return el.innerText !== undefined && el.innerText !== null ? el.innerText : el.textContent;
+  }
+
+  function nameOf(el, role) {
+    var cap = role === "link" ? MAX_NAME_LINK : MAX_NAME_FIELD;
     var label = labelFor(el);
-    if (label && label.textContent && label.textContent.trim()) return sanitize(label.textContent);
-    if (el.getAttribute("aria-label")) return sanitize(el.getAttribute("aria-label"));
-    if (el.getAttribute("placeholder")) return sanitize(el.getAttribute("placeholder"));
-    return sanitize(el.textContent);
+    if (label && label.textContent && label.textContent.trim()) return sanitize(textOf(label), cap);
+    if (el.getAttribute("aria-label")) return sanitize(el.getAttribute("aria-label"), cap);
+    if (el.getAttribute("placeholder")) return sanitize(el.getAttribute("placeholder"), cap);
+    return sanitize(textOf(el), cap);
   }
 
   /* Spec §7.5: credentials must never leave the page, because the takeover
@@ -128,11 +144,12 @@
       ? el.value
       : el.getAttribute("value");
     var value = secret ? (rawValue ? REDACTED : undefined) : (sanitize(rawValue) || undefined);
+    var role = roleOf(el);
 
     out.push({
       ref: ref,
-      role: roleOf(el),
-      name: nameOf(el),
+      role: role,
+      name: nameOf(el, role),
       value: value,
       submitCapable: submitCapable,
       disabled: isDisabled(el),

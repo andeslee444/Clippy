@@ -18,6 +18,19 @@ export interface Snapshot {
   url: string;
   title: string;
   nodes: RefNode[];
+  /**
+   * The page contains no `<form>` element, so `submitCapable` is unreliable here.
+   *
+   * Measured against real ATS platforms: a Workday job page has ZERO forms — it
+   * is a SPA driving everything through click handlers — so `closest("form")`
+   * returns null for every element and nothing gets flagged. Greenhouse, by
+   * contrast, has a real form (declared `method="get"`, then submitted over XHR,
+   * so form method is NOT a usable signal either).
+   *
+   * This flag surfaces the coverage gap rather than hiding it: the gate policy
+   * can require approval for every click on a formless page.
+   */
+  formless: boolean;
 }
 
 /**
@@ -41,12 +54,17 @@ let generation = Math.floor(Date.now() / 1000);
 /** Take a fresh ref'd snapshot of the page, bumping the generation (spec §8.2). */
 export async function readPage(page: Page): Promise<Snapshot> {
   const gen = ++generation;
-  const nodes = (await page.evaluate(
-    ({ src, g }: { src: string; g: number }) =>
-      (new Function("return (" + src + ")")() as (d: Document, n: number) => unknown)(document, g),
+  const { nodes, formless } = (await page.evaluate(
+    ({ src, g }: { src: string; g: number }) => ({
+      nodes: (new Function("return (" + src + ")")() as (d: Document, n: number) => unknown)(
+        document,
+        g,
+      ),
+      formless: document.querySelector("form") === null,
+    }),
     { src: PAGE_SCRIPT, g: gen },
-  )) as RefNode[];
-  return { generation: gen, url: page.url(), title: await page.title(), nodes };
+  )) as { nodes: RefNode[]; formless: boolean };
+  return { generation: gen, url: page.url(), title: await page.title(), nodes, formless };
 }
 
 /** Compact text rendering for a model prompt (spec §8.2 — ~2KB, not pixels). */

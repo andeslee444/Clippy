@@ -86,8 +86,20 @@ describe("page-script", () => {
     expect(nodes[0].name).not.toContain('"');
   });
 
-  it("caps absurdly long accessible names", () => {
-    expect(collect(`<button>${"x".repeat(500)}</button>`)[0].name.length).toBeLessThanOrEqual(81);
+  it("caps link names tightly — job descriptions are full of them", () => {
+    expect(collect(`<a href="/x">${"x".repeat(500)}</a>`)[0].name.length).toBeLessThanOrEqual(81);
+  });
+
+  it("allows long form-control names — Greenhouse puts the question in the label", () => {
+    // Measured: an 80-char cap truncated a real required Greenhouse question to
+    // "Please note that you will not be considered unless you comple…", leaving
+    // the model no way to know what was being asked.
+    const q = "Please note that you will not be considered unless you complete the "
+      + "supplementary application form linked above, which asks about your research "
+      + "background and availability.";
+    const n = collect(`<label for="q">${q}</label><select id="q"><option>Yes</option></select>`)[0];
+    expect(n.name).toContain("supplementary application form");
+    expect(n.name.length).toBeGreaterThan(81);
   });
 
   it("emits disabled elements with a flag rather than hiding them", () => {
@@ -127,6 +139,7 @@ describe("renderSnapshot", () => {
       generation: 1,
       url: "https://x.test/apply",
       title: "Apply",
+      formless: false,
       nodes: [
         { ref: "g1-r0", role: "password", name: "Password", value: "•••", submitCapable: false, disabled: false, redacted: true },
         { ref: "g1-r1", role: "button", name: "Submit", submitCapable: true, disabled: true },
