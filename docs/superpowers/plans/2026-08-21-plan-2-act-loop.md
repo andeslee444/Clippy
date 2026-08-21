@@ -747,26 +747,201 @@ git commit -m "feat(brains): tool surface and scripted brain"
 
 ---
 
-### Task P2-6: Claude ActBrain
+### Task P2-6: Claude ActBrain — manual loop
 
-**Files:** Create `src/brains/act-brain.ts`
+**Files:** Create `src/orchestrator/compact-messages.ts` + test, create `src/brains/act-brain.ts`
 
-**Cannot be run without `ANTHROPIC_API_KEY`.** Write it, typecheck it, and report that live verification is outstanding. Do not attempt an API call.
+> **Revised after the Tool Runner was ruled out.** The original version of this task
+> used `client.beta.messages.toolRunner()` with `setMessagesParams()` for compaction.
+> Verified against the installed `@anthropic-ai/sdk@0.120.0` source, that silently
+> breaks the run:
+>
+> ```js
+> if (!this.#mutated) {
+>   const message = await this.#message;
+>   this.#state.params.messages.push({ role: message.role, content: message.content });
+> }
+> ```
+>
+> `setMessagesParams()` sets `#mutated`, so the assistant turn carrying this turn's
+> `tool_use` blocks is **never pushed**. `#generateToolResponse()` then runs against
+> the replacement array, whose last message is a `user` turn, and returns null — so
+> **no tool executes**. No exception, no warning; the model's requested actions
+> simply vanish. That is strictly worse than the API rejection the plan anticipated.
+>
+> We own the loop instead. It is about forty lines, and it makes §8.3 straightforward.
+
+#### The compaction insight
+
+The naive fix — replace the transcript with a summary — cannot work in *any* loop,
+runner or manual: the Messages API requires every `tool_use` block to be answered by
+a `tool_result` block with a matching `tool_use_id`. Dropping messages breaks that
+pairing.
+
+So compaction does not remove messages. It **shrinks the content of old
+`tool_result` blocks in place**, keeping every block and every id. A `read_page`
+result goes from ~2 KB to one line; the conversation structure is untouched. That is
+what §8.3 asked for ("the full tree exists only for the current step") — expressed
+in the only form the API accepts.
 
 - [ ] **Step 1: Install the SDK**
 
 Run: `npm i @anthropic-ai/sdk`
 
-- [ ] **Step 2: Create `src/brains/act-brain.ts`**
+- [ ] **Step 2: Write the failing test**
+
+Create `src/orchestrator/compact-messages.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { compactMessages } from "./compact-messages.js";
+import type Anthropic from "@anthropic-ai/sdk";
+
+type Msg = Anthropic.Beta.BetaMessageParam;
+
+const tree = (n: number) => `g${n}-r0 textbox "First Name*"\n`.padEnd(2000, ".");
+
+const turn = (id: string, n: number): Msg[] => [
+  { role: "assistant", content: [{ type: "tool_use", id, name: "read_page", input: {} }] },
+  { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: tree(n) }] },
+];
+
+describe("compactMessages", () => {
+  it("leaves a short conversation alone", () => {
+    const msgs: Msg[] = [{ role: "user", content: "apply to this job" }, ...turn("a", 1)];
+    expect(compactMessages(msgs)).toEqual(msgs);
+  });
+
+  it("keeps the most recent page result at full size", () => {
+    const msgs: Msg[] = [{ role: "user", content: "go" }, ...turn("a", 1), ...turn("b", 2)];
+    const out = compactMessages(msgs);
+    expect(JSON.stringify(out)).toContain("g2-r0");
+  });
+
+  it("shrinks older page results", () => {
+    const msgs: Msg[] = [{ role: "user", content: "go" }, ...turn("a", 1), ...turn("b", 2)];
+    const out = compactMessages(msgs);
+    expect(JSON.stringify(out)).not.toContain(tree(1));
+  });
+
+  it("preserves every tool_use_id — the API rejects an unmatched pair", () => {
+    const msgs: Msg[] = [{ role: "user", content: "go" }, ...turn("a", 1), ...turn("b", 2), ...turn("c", 3)];
+    const ids = (m: Msg[]) =>
+      JSON.stringify(m).match(/"tool_use_id":"[a-z]"/g)?.sort() ?? [];
+    expect(ids(compactMessages(msgs))).toEqual(ids(msgs));
+  });
+
+  it("preserves message count and roles exactly", () => {
+    const msgs: Msg[] = [{ role: "user", content: "go" }, ...turn("a", 1), ...turn("b", 2)];
+    const out = compactMessages(msgs);
+    expect(out).toHaveLength(msgs.length);
+    expect(out.map((m) => m.role)).toEqual(msgs.map((m) => m.role));
+  });
+
+  it("shrinks a long conversation dramatically", () => {
+    const msgs: Msg[] = [{ role: "user", content: "go" }];
+    for (let i = 0; i < 20; i++) msgs.push(...turn(`t${i}`, i));
+    const before = JSON.stringify(msgs).length;
+    const after = JSON.stringify(compactMessages(msgs)).length;
+    expect(after).toBeLessThan(before / 4);
+  });
+
+  it("does not touch non-page tool results", () => {
+    const msgs: Msg[] = [
+      { role: "assistant", content: [{ type: "tool_use", id: "x", name: "fill", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: "ok — fill ok" }] },
+      ...turn("y", 9),
+    ];
+    expect(JSON.stringify(compactMessages(msgs))).toContain("ok — fill ok");
+  });
+});
+```
+
+- [ ] **Step 3: Run to verify it fails**
+
+Run: `npx vitest run src/orchestrator/compact-messages.test.ts` — expect FAIL.
+
+- [ ] **Step 4: Create `src/orchestrator/compact-messages.ts`**
+
+```ts
+import type Anthropic from "@anthropic-ai/sdk";
+
+type Msg = Anthropic.Beta.BetaMessageParam;
+
+/** Results longer than this are candidates for shrinking once superseded. */
+const BULKY = 400;
+
+/**
+ * Shrink superseded page snapshots in place (spec §8.3).
+ *
+ * Messages are never removed and ids are never touched: the Messages API requires
+ * every `tool_use` block to be answered by a `tool_result` with a matching
+ * `tool_use_id`, so dropping or reordering messages produces a 400. Only the
+ * CONTENT of bulky, superseded tool results is replaced.
+ *
+ * The most recent bulky result is left intact — that one describes the page as it
+ * is now. Everything before it describes a page that no longer exists, so it costs
+ * input tokens on every subsequent turn and actively misleads.
+ */
+export function compactMessages(messages: Msg[]): Msg[] {
+  const bulky: Array<[number, number]> = [];
+
+  messages.forEach((msg, mi) => {
+    if (!Array.isArray(msg.content)) return;
+    msg.content.forEach((block, bi) => {
+      if (block.type !== "tool_result") return;
+      if (typeof block.content === "string" && block.content.length > BULKY) {
+        bulky.push([mi, bi]);
+      }
+    });
+  });
+
+  if (bulky.length <= 1) return messages;
+  const stale = bulky.slice(0, -1);
+
+  return messages.map((msg, mi) => {
+    const hits = stale.filter(([m]) => m === mi);
+    if (hits.length === 0 || !Array.isArray(msg.content)) return msg;
+    return {
+      ...msg,
+      content: msg.content.map((block, bi) =>
+        hits.some(([, b]) => b === bi) && block.type === "tool_result"
+          ? { ...block, content: "[superseded page snapshot — call read_page for the current page]" }
+          : block,
+      ),
+    };
+  });
+}
+```
+
+- [ ] **Step 5: Run to verify it passes**
+
+Run: `npx vitest run src/orchestrator/compact-messages.test.ts` — expect PASS, 7 tests.
+
+- [ ] **Step 6: Create `src/brains/act-brain.ts`**
+
+**Note the zod import.** `betaZodTool` declares `import * as z from 'zod/v4'`, and this
+project has zod 3.25.76 whose default export is the v3 API — a structurally different
+class hierarchy. Importing from `"zod"` produces `TS2740` on every tool. The `zod/v4`
+subpath is exported by the installed package; use it.
 
 ```ts
 import Anthropic from "@anthropic-ai/sdk";
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { BudgetTracker } from "../orchestrator/budget.js";
-import { compactHistory } from "../orchestrator/digest.js";
+import { compactMessages } from "../orchestrator/compact-messages.js";
 import type { Objective, ObjectiveResult } from "../orchestrator/types.js";
 import type { ActBrain, BrainTools } from "./types.js";
+
+/** claude-opus-5, USD per token. Cache reads bill at a tenth of fresh input. */
+const IN = 5 / 1_000_000;
+const OUT = 25 / 1_000_000;
+
+/** BetaUsage carries token counts, not a cost — there is no `usage.cost` field. */
+export function costOf(usage: Anthropic.Beta.BetaUsage): number {
+  const cached = usage.cache_read_input_tokens ?? 0;
+  return usage.input_tokens * IN + cached * IN * 0.1 + usage.output_tokens * OUT;
+}
 
 const SYSTEM = `You fill out job application forms in a real browser on behalf of a real person.
 
@@ -783,137 +958,162 @@ Rules that are enforced, not advisory:
 Fill only fields you have been given values for. If a required field has no value,
 stop and say which field is missing rather than inventing one.`;
 
-/** Every readPage result seen this objective, newest last. Only the last is sent. */
-type Trees = string[];
+const TOOLS: Anthropic.Beta.BetaTool[] = [
+  { name: "read_page", description: "Read the current page as a list of elements with refs. Call this first, and again after anything changes the page.", input_schema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "fill", description: "Type a value into a text field, by ref.", input_schema: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref", "value"], additionalProperties: false } },
+  { name: "select", description: "Choose an option in a dropdown, by ref.", input_schema: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref", "value"], additionalProperties: false } },
+  { name: "click", description: "Click a non-submitting element, by ref. Refused for anything that submits a form.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
+  { name: "submit", description: "Submit the form. Always asks the human for approval first, and may be declined.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
+];
 
+const RefArg = z.object({ ref: z.string() });
+const ValueArg = z.object({ ref: z.string(), value: z.string() });
+
+/**
+ * Drives one objective with a hand-written agentic loop.
+ *
+ * The SDK's Tool Runner was ruled out: calling `setMessagesParams()` mid-loop —
+ * the only compaction hook it offers — sets an internal `#mutated` flag that
+ * skips pushing the assistant turn, so the turn's tool calls are silently
+ * dropped and never execute. Owning the message array avoids that entirely and
+ * makes §8.3 a straightforward transformation of an array we control.
+ */
 export class ClaudeActBrain implements ActBrain {
   private readonly client: Anthropic;
 
   constructor(client?: Anthropic) {
-    // Zero-arg constructor resolves ANTHROPIC_API_KEY, then ANTHROPIC_AUTH_TOKEN,
-    // then an `ant auth login` profile — no key in the environment is not the
-    // same as no credentials.
+    // Zero-arg resolves ANTHROPIC_API_KEY, then ANTHROPIC_AUTH_TOKEN, then an
+    // `ant auth login` profile — no env var is not the same as no credentials.
     this.client = client ?? new Anthropic();
   }
 
   async pursue(objective: Objective, tools: BrainTools): Promise<ObjectiveResult> {
     const budget = new BudgetTracker(objective);
-    const trees: Trees = [];
+    let messages: Anthropic.Beta.BetaMessageParam[] = [
+      { role: "user", content: objective.goal },
+    ];
 
-    const readPage = betaZodTool({
-      name: "read_page",
-      description: "Read the current page as a list of elements with refs. Call this first, and again after anything changes the page.",
-      inputSchema: z.object({}),
-      run: async () => {
-        const tree = await tools.readPage();
-        trees.push(tree);
-        return tree;
-      },
-    });
-
-    const fill = betaZodTool({
-      name: "fill",
-      description: "Type a value into a text field, by ref.",
-      inputSchema: z.object({ ref: z.string(), value: z.string() }),
-      run: ({ ref, value }) => tools.perform({ kind: "fill", ref, value }),
-    });
-
-    const select = betaZodTool({
-      name: "select",
-      description: "Choose an option in a dropdown, by ref.",
-      inputSchema: z.object({ ref: z.string(), value: z.string() }),
-      run: ({ ref, value }) => tools.perform({ kind: "select", ref, value }),
-    });
-
-    const click = betaZodTool({
-      name: "click",
-      description: "Click a non-submitting element, by ref. Refused for anything that submits a form.",
-      inputSchema: z.object({ ref: z.string() }),
-      run: ({ ref }) => tools.perform({ kind: "click", ref }),
-    });
-
-    const submit = betaZodTool({
-      name: "submit",
-      description: "Submit the form. Always asks the human for approval first, and may be declined.",
-      inputSchema: z.object({ ref: z.string() }),
-      run: ({ ref }) => tools.perform({ kind: "submit", ref }),
-    });
-
-    const runner = this.client.beta.messages.toolRunner({
-      model: "claude-opus-5",
-      max_tokens: 8000,
-      // Simple, high-volume decisions: fewer consolidated tool calls, less preamble.
-      output_config: { effort: "low" },
-      thinking: { type: "adaptive" },
-      // Stable prefix: system prompt + tool definitions are resent every turn.
-      cache_control: { type: "ephemeral" },
-      system: SYSTEM,
-      max_iterations: objective.maxSteps,
-      tools: [readPage, fill, select, click, submit],
-      messages: [{ role: "user", content: objective.goal }],
-    });
-
-    let stuckReason: string | null = null;
-
-    for await (const message of runner) {
-      const usage = message.usage as { cost?: number } | undefined;
-      if (typeof usage?.cost === "number") budget.spend(usage.cost);
-
-      const reason = budget.exhausted();
-      if (reason) { stuckReason = reason; break; }
-
-      // §8.3: replace the accumulated transcript with a compacted view. Older
-      // page trees describe a page that no longer exists — they cost tokens and
-      // actively mislead.
-      if (trees.length > 1) {
-        runner.setMessagesParams([
-          { role: "user", content: `${objective.goal}\n\n${compactHistory(tools.steps, trees)}` },
-        ]);
+    for (;;) {
+      const exhausted = budget.exhausted();
+      if (exhausted) {
+        return { kind: "stuck", reason: exhausted, steps: budget.steps, cost: budget.cost };
       }
-    }
 
-    if (stuckReason) {
-      return { kind: "stuck", reason: stuckReason, steps: budget.steps, cost: budget.cost };
+      const response = await this.client.beta.messages.create({
+        model: "claude-opus-5",
+        max_tokens: 8000,
+        // Simple, high-volume decisions: fewer consolidated calls, less preamble.
+        output_config: { effort: "low" },
+        thinking: { type: "adaptive" },
+        // Stable prefix — system + tools are resent every turn.
+        cache_control: { type: "ephemeral" },
+        system: SYSTEM,
+        tools: TOOLS,
+        messages,
+      });
+
+      budget.spend(costOf(response.usage));
+
+      if (response.stop_reason === "refusal") {
+        return { kind: "stuck", reason: "model refused", steps: budget.steps, cost: budget.cost };
+      }
+
+      messages.push({ role: "assistant", content: response.content });
+
+      // Server-side tool paused the turn; resend to continue.
+      if (response.stop_reason === "pause_turn") continue;
+
+      const calls = response.content.filter(
+        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
+      );
+      if (calls.length === 0) {
+        return { kind: "done", steps: budget.steps, cost: budget.cost };
+      }
+
+      // All results for one assistant turn go back in ONE user message.
+      // Splitting them trains the model out of parallel tool use.
+      const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+      for (const call of calls) {
+        results.push({
+          type: "tool_result",
+          tool_use_id: call.id,
+          content: await this.#dispatch(call, tools),
+        });
+      }
+      messages.push({ role: "user", content: results });
+
+      const declined = tools.steps.find((s) => s.outcome.kind === "stuck");
+      if (declined && declined.outcome.kind === "stuck") {
+        return { kind: "stuck", reason: declined.outcome.reason, steps: budget.steps, cost: budget.cost };
+      }
+
+      // §8.3 — shrink superseded page snapshots. Ids and pairing are preserved.
+      messages = compactMessages(messages);
     }
-    const stuck = tools.steps.find((s) => s.outcome.kind === "stuck");
-    if (stuck && stuck.outcome.kind === "stuck") {
-      return { kind: "stuck", reason: stuck.outcome.reason, steps: budget.steps, cost: budget.cost };
+  }
+
+  async #dispatch(call: Anthropic.Beta.BetaToolUseBlock, tools: BrainTools): Promise<string> {
+    try {
+      switch (call.name) {
+        case "read_page":
+          return await tools.readPage();
+        case "fill": {
+          const { ref, value } = ValueArg.parse(call.input);
+          return await tools.perform({ kind: "fill", ref, value });
+        }
+        case "select": {
+          const { ref, value } = ValueArg.parse(call.input);
+          return await tools.perform({ kind: "select", ref, value });
+        }
+        case "click":
+          return await tools.perform({ kind: "click", ref: RefArg.parse(call.input).ref });
+        case "submit":
+          return await tools.perform({ kind: "submit", ref: RefArg.parse(call.input).ref });
+        default:
+          return `ERROR: unknown tool ${call.name}`;
+      }
+    } catch (err) {
+      // Malformed arguments from the model. Tell it; do not abort the run.
+      return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
     }
-    return { kind: "done", steps: budget.steps, cost: budget.cost };
   }
 }
 ```
 
-- [ ] **Step 3: Typecheck and commit**
+- [ ] **Step 7: Add a cost test**
 
-Run: `npm run typecheck` — expect exit 0. Do **not** run it.
+Append to `src/orchestrator/compact-messages.test.ts`:
 
-#### ⚠️ The compaction step is the unverified part of this plan
+```ts
+import { costOf } from "../brains/act-brain.js";
 
-Rewriting the transcript mid-run with `setMessagesParams()` is the one thing here
-I could not check against a live SDK, and there is a specific reason to doubt it:
-the Messages API requires every `tool_use` block to be answered by a matching
-`tool_result`. Replacing the whole array with a single user message discards that
-pairing, and the API may reject it outright.
+describe("costOf", () => {
+  it("prices input and output tokens", () => {
+    const c = costOf({ input_tokens: 1_000_000, output_tokens: 0 } as never);
+    expect(c).toBeCloseTo(5, 5);
+  });
 
-**Stop and report — do not work around it — if any of these is true:**
+  it("prices cache reads at a tenth of fresh input", () => {
+    const c = costOf({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 } as never);
+    expect(c).toBeCloseTo(0.5, 5);
+  });
 
-- `setMessagesParams`, `max_iterations`, `output_config`, or `cache_control` are
-  absent from the runner's types in the installed SDK version. Do not cast them
-  away: a silently ignored option means compaction or the budget never takes
-  effect, and nothing would look wrong.
-- The types accept the call but the shape above is obviously invalid.
+  it("prices output at five times input", () => {
+    const c = costOf({ input_tokens: 0, output_tokens: 1_000_000 } as never);
+    expect(c).toBeCloseTo(25, 5);
+  });
+});
+```
 
-If compaction cannot work through the runner, the fallback is the manual loop
-(documented in the SDK's tool-use guide), where we own the message array outright
-and §8.3 becomes straightforward. That is a real possibility, not a failure —
-report it and the plan will be revised rather than patched.
+- [ ] **Step 8: Typecheck and commit**
 
-Everything else in this task is ordinary wiring and should be uncontroversial.
+Run: `npm run typecheck` (exit 0) and `npm test`. Do **not** run the brain — there is no API key.
+
+If any SDK member used here is absent or shaped differently in the installed version, **stop and report with the compiler error** rather than casting it away.
 
 ```bash
-git add src/brains/act-brain.ts package.json package-lock.json
-git commit -m "feat(brains): Claude ActBrain over the SDK tool runner"
+git add src/orchestrator/compact-messages.ts src/orchestrator/compact-messages.test.ts src/brains/act-brain.ts package.json package-lock.json
+git commit -m "feat(brains): Claude ActBrain with a hand-written loop"
 ```
 
 ---
