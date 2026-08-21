@@ -8,7 +8,7 @@ import { GatedExecutor } from "../hands/execute.js";
 import { AuditLog } from "../trust/audit.js";
 import type { Action, Effect } from "../hands/types.js";
 import { makeTools } from "../brains/tools.js";
-import { ScriptedBrain } from "../brains/scripted-brain.js";
+import { ScriptedBrain, type ScriptedStep } from "../brains/scripted-brain.js";
 import { ClaudeActBrain } from "../brains/act-brain.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 
@@ -21,7 +21,7 @@ const HELP = `
   select <ref> <val>   choose an option
   submit <ref>         submit (always gated)
   do <goal>            let the brain pursue a goal (needs ANTHROPIC_API_KEY)
-  demo                 run a scripted objective — no API key needed
+  demo <kind> <name> [v] run one scripted effect by field name — no API key
   help                 this
   quit
 `;
@@ -115,10 +115,24 @@ for (;;) {
 
     if (cmd === "do" || cmd === "demo") {
       const goal = rest.join(" ");
-      const brain =
-        cmd === "demo"
-          ? new ScriptedBrain([{ kind: "fill", ref: rest[0]!, value: rest.slice(1).join(" ") }])
-          : new ClaudeActBrain();
+      // demo takes an effect KIND and a NAME FRAGMENT, never a ref: the brain's
+      // own opening readPage bumps the generation, so any ref typed at the
+      // prompt is stale by the time the effect runs.
+      const [kind, match, ...v] = rest;
+      const value = v.join(" ");
+      const scripted =
+        kind && match && ["fill", "select", "click", "submit"].includes(kind)
+          ? { kind: kind as ScriptedStep["kind"], match, value }
+          : null;
+
+      if (cmd === "demo" && !scripted) {
+        console.log('usage: demo <fill|select|click|submit> <name-fragment> [value]');
+        console.log('  e.g. demo fill First Testington');
+        console.log('       demo submit Submit');
+        continue;
+      }
+
+      const brain = cmd === "demo" ? new ScriptedBrain([scripted!]) : new ClaudeActBrain();
       steps.length = 0;
       const result = await brain.pursue({ ...DEFAULT_OBJECTIVE, goal }, brainTools);
       console.log(

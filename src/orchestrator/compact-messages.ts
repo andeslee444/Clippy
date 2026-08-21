@@ -18,12 +18,25 @@ const BULKY = 400;
  * input tokens on every subsequent turn and actively misleads.
  */
 export function compactMessages(messages: Msg[]): Msg[] {
+  // Which tool produced each result. Size alone is the wrong test: a large
+  // result from some other tool would be replaced with a message telling the
+  // model to call read_page, which is both wrong and confusing. Only a page
+  // snapshot can be recovered by re-reading the page.
+  const toolOf = new Map<string, string>();
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block.type === "tool_use") toolOf.set(block.id, block.name);
+    }
+  }
+
   const bulky: Array<[number, number]> = [];
 
   messages.forEach((msg, mi) => {
     if (!Array.isArray(msg.content)) return;
     msg.content.forEach((block, bi) => {
       if (block.type !== "tool_result") return;
+      if (toolOf.get(block.tool_use_id) !== "read_page") return;
       if (typeof block.content === "string" && block.content.length > BULKY) {
         bulky.push([mi, bi]);
       }

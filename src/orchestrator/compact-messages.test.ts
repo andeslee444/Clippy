@@ -52,14 +52,22 @@ describe("compactMessages", () => {
     expect(after).toBeLessThan(before / 4);
   });
 
-  it("does not touch non-page tool results", () => {
+  it("does not touch results from other tools, however large", () => {
+    // Size alone is the wrong test — only a page snapshot is recoverable by
+    // re-reading the page, so only read_page results may be replaced with that
+    // instruction. A bulky result from another tool must survive intact.
+    const big = "IMAGE_DATA".padEnd(5000, "x");
     const msgs: Msg[] = [
-      { role: "assistant", content: [{ type: "tool_use", id: "x", name: "fill", input: {} }] },
-      { role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: "ok — fill ok" }] },
+      { role: "assistant", content: [{ type: "tool_use", id: "x", name: "capture_page", input: {} }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "x", content: big }] },
       ...turn("y", 9),
+      ...turn("z", 10),
     ];
-    expect(JSON.stringify(compactMessages(msgs))).toContain("ok — fill ok");
+    const out = JSON.stringify(compactMessages(msgs));
+    expect(out).toContain(big);
+    expect(out).not.toContain(tree(9));
   });
+
 });
 
 describe("costOf", () => {
