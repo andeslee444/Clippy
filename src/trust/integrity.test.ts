@@ -79,3 +79,51 @@ describe("checkIntegrity — the asymmetry is deliberate", () => {
     expect(check("Presented at Strange Loop").ok).toBe(false);
   });
 });
+
+describe("checkIntegrity — holes found by adversarial probing", () => {
+  // Each of these five passed the validator before being patched. Found by
+  // attacking it directly rather than by any test in the suite above.
+  it("REJECTS a single-word invented employer mid-sentence", () => {
+    // Was skipped entirely: the rule "a lone capitalised word is prose" is only
+    // true at the start of a sentence.
+    expect(check("Worked at Globex").ok).toBe(false);
+  });
+
+  it("still accepts a sentence-initial capitalised verb", () => {
+    // The other half of that fix — it must not start flagging ordinary prose.
+    expect(check("Designed the pipeline. Shipped it in 2024.").ok).toBe(true);
+  });
+
+  it("REJECTS an invented bare number", () => {
+    // "managed a team of 12" — 12 is not a percentage, multiplier, or currency,
+    // so the metric regex missed it while profile.ts's equivalent caught it.
+    expect(check("Managed a team of 12").ok).toBe(false);
+  });
+
+  it("REJECTS a metric spelled out in words", () => {
+    expect(check("Cut latency forty percent").ok).toBe(false);
+  });
+
+  it("REJECTS a spelled-out tenure claim", () => {
+    expect(check("I have eight years of experience").ok).toBe(false);
+  });
+
+  it("does not flag bare number words without a unit", () => {
+    // "one of the" must not trip it, or every second sentence is rejected.
+    expect(check("One of the services I owned at Acme Corp").ok).toBe(true);
+  });
+
+  it("reports a bad year once, not as both a year and a metric", () => {
+    const r = check("Joined in 2019");
+    expect(r.violations.filter((v) => v.value === "2019")).toHaveLength(1);
+  });
+
+  it("KNOWN LIMIT: a lowercase invented employer is not caught", () => {
+    // Documented, not fixed. Catching it means checking every lowercase word
+    // against the profile, which rejects ordinary prose. Drafted resume text
+    // capitalises company names, so this is exploitable by an adversary but not
+    // reachable by a careless model.
+    expect(check("worked at globex").ok).toBe(true);
+  });
+});
+
