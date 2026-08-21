@@ -15,8 +15,6 @@ export interface Snapshot {
   nodes: RefNode[];
 }
 
-const SELECTOR = "input, textarea, select, button, a[href], [role=button], [contenteditable=true]";
-
 /**
  * Stamp every interactive element with `data-clippy-ref` and collect its
  * role/name/value. Exported for testing — also serialised into the page.
@@ -24,6 +22,13 @@ const SELECTOR = "input, textarea, select, button, a[href], [role=button], [cont
  * Pure with respect to everything except the `data-clippy-ref` attribute.
  */
 export function stampAndCollect(doc: Document, generation: number): RefNode[] {
+  // Declared INSIDE the function on purpose. readPage() serialises this
+  // function with .toString() and rebuilds it inside the page, where nothing
+  // from this module's scope exists. Hoisting this to module scope would throw
+  // ReferenceError in the browser while every direct-call test still passed.
+  const SELECTOR =
+    "input, textarea, select, button, a[href], [role=button], [contenteditable=true]";
+
   for (const stale of doc.querySelectorAll("[data-clippy-ref]")) {
     stale.removeAttribute("data-clippy-ref");
   }

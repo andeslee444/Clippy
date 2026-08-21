@@ -48,6 +48,23 @@ describe("stampAndCollect", () => {
     expect(nodes[0]!.name).toBe("ok");
   });
 
+  it("survives serialisation into a page context", () => {
+    // readPage() ships this function to the browser as a STRING and rebuilds it
+    // with new Function. Every other test in this file calls stampAndCollect
+    // directly, where Node resolves module-scope bindings via closure — so those
+    // tests CANNOT catch a stray outer reference. This one can: it exercises the
+    // path production actually uses.
+    const rebuilt = new Function(
+      `return (${stampAndCollect.toString()})`,
+    )() as typeof stampAndCollect;
+
+    const doc = fakeDoc(`<input aria-label="Email"><button>Send</button>`);
+    const nodes = rebuilt(doc, 7);
+    expect(nodes.map((n) => n.ref)).toEqual(["g7-r0", "g7-r1"]);
+    expect(nodes[0]!.name).toBe("Email");
+    expect(nodes[1]!.name).toBe("Send");
+  });
+
   it("re-stamping with a new generation invalidates old refs", () => {
     const doc = fakeDoc(`<input aria-label="x">`);
     stampAndCollect(doc, 1);

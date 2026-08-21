@@ -74,7 +74,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
@@ -88,6 +88,10 @@
 ```
 
 `noUncheckedIndexedAccess` matters here: the ref table is index-heavy and this forces the stale-ref case to be handled at every lookup rather than crashing at runtime.
+
+`DOM.Iterable` is required, not optional: `stampAndCollect` (Task 6) iterates `querySelectorAll`
+results with `for...of`, and `NodeListOf<Element>` only gains a `Symbol.iterator` when it is in
+`lib`. Without it typecheck fails with `TS2488`.
 
 - [ ] **Step 3: Create `vitest.config.ts`**
 
@@ -632,6 +636,23 @@ describe("stampAndCollect", () => {
     expect(nodes[0]!.name).toBe("ok");
   });
 
+  it("survives serialisation into a page context", () => {
+    // readPage() ships this function to the browser as a STRING and rebuilds it
+    // with new Function. Every other test in this file calls stampAndCollect
+    // directly, where Node resolves module-scope bindings via closure — so those
+    // tests CANNOT catch a stray outer reference. This one can: it exercises the
+    // path production actually uses.
+    const rebuilt = new Function(
+      `return (${stampAndCollect.toString()})`,
+    )() as typeof stampAndCollect;
+
+    const doc = fakeDoc(`<input aria-label="Email"><button>Send</button>`);
+    const nodes = rebuilt(doc, 7);
+    expect(nodes.map((n) => n.ref)).toEqual(["g7-r0", "g7-r1"]);
+    expect(nodes[0]!.name).toBe("Email");
+    expect(nodes[1]!.name).toBe("Send");
+  });
+
   it("re-stamping with a new generation invalidates old refs", () => {
     const doc = fakeDoc(`<input aria-label="x">`);
     stampAndCollect(doc, 1);
@@ -674,8 +695,6 @@ export interface Snapshot {
   nodes: RefNode[];
 }
 
-const SELECTOR = "input, textarea, select, button, a[href], [role=button], [contenteditable=true]";
-
 /**
  * Stamp every interactive element with `data-clippy-ref` and collect its
  * role/name/value. Exported for testing — also serialised into the page.
@@ -683,6 +702,13 @@ const SELECTOR = "input, textarea, select, button, a[href], [role=button], [cont
  * Pure with respect to everything except the `data-clippy-ref` attribute.
  */
 export function stampAndCollect(doc: Document, generation: number): RefNode[] {
+  // Declared INSIDE the function on purpose. readPage() serialises this
+  // function with .toString() and rebuilds it inside the page, where nothing
+  // from this module's scope exists. Hoisting this to module scope would throw
+  // ReferenceError in the browser while every direct-call test still passed.
+  const SELECTOR =
+    "input, textarea, select, button, a[href], [role=button], [contenteditable=true]";
+
   for (const stale of doc.querySelectorAll("[data-clippy-ref]")) {
     stale.removeAttribute("data-clippy-ref");
   }
@@ -770,7 +796,7 @@ export function renderSnapshot(s: Snapshot): string {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run src/hands/browser/snapshot.test.ts`
-Expected: PASS — 7 tests.
+Expected: PASS — 8 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1180,7 +1206,7 @@ Expected: PASS — 5 tests.
 - [ ] **Step 5: Run the whole suite**
 
 Run: `npm test`
-Expected: PASS — all files green (types 4, policy 5, audit 4, snapshot 7, act 6, execute 5 = 31 tests).
+Expected: PASS — all files green (types 4, policy 5, audit 4, snapshot 8, act 6, execute 5 = 32 tests).
 
 - [ ] **Step 6: Commit**
 
@@ -1454,7 +1480,7 @@ git push origin main
 
 ## Done when
 
-- `npm test` passes (31 tests).
+- `npm test` passes (32 tests).
 - `npm run spine` drives a real ATS form: `read` → `fill` → `read` → `submit` prompts the gate.
 - A stale ref from an earlier generation is rejected without executing.
 - `runs/*.jsonl` shows attempt/outcome pairs, including a denied submit and a Ctrl-C abort.
