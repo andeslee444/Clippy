@@ -1158,10 +1158,11 @@ export async function connect(): Promise<Session> {
 
   // Verify the profile before handing back anything that can act on it.
   const cdp = await context.newCDPSession(page);
-  const { commandLine } = (await cdp.send("Browser.getBrowserCommandLine")) as {
-    commandLine: string[];
-  };
-  const dirArg = commandLine.find((a) => a.startsWith("--user-data-dir="));
+  // CDP's Browser.getBrowserCommandLine returns { arguments: string[] }, not
+  // { commandLine: ... } — confirmed against playwright-core's own shipped
+  // Protocol.Browser.getBrowserCommandLineReturnValue type.
+  const { arguments: args } = await cdp.send("Browser.getBrowserCommandLine");
+  const dirArg = args.find((a) => a.startsWith("--user-data-dir="));
   const actual = dirArg?.slice("--user-data-dir=".length) ?? "(unknown)";
   if (actual !== PROFILE_DIR) {
     await browser.close();
