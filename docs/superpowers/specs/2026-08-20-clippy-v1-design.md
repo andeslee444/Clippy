@@ -153,6 +153,8 @@ genuine judgment.
   only for genuinely multi-turn work.
 - Used for: finding and ranking postings, assessing fit, drafting tailored resume bullets and
   free-text answers, and replanning.
+- **`agent` is chosen per task, not per application.** It is a per-request field, so routing costs
+  nothing beyond picking a slug. See §13 for the mapping.
 
 Both sit behind one interface so either is swappable and both are mockable in tests.
 
@@ -520,14 +522,29 @@ The module boundaries in §6.1 were chosen largely to make this possible.
 | Jenova latency on knowledge turns makes runs feel slow | Knowledge turns are off the hot path; overlap them with browser work where possible |
 | Submitting a bad application to a real employer | §7.1 gate, §7.4 validator, §9.5 provenance diff. Three independent layers |
 
-## 13. Resolved at implementation time
+## 13. KnowBrain agent routing (resolved 2026-08-21)
 
-One item cannot be settled from documentation alone:
+`GET /v1/agents` against a live key returns **262 pre-built agents**. Since `agent` is a per-request
+field, routing per task costs nothing — no extra integration, and with `ephemeral: true` no additional
+session fees.
 
-- **Jenova agent slug.** `KnowBrain` must target a specific `agent` value. The default is the
-  general-purpose `jenova` agent; if `GET /agents` against a live key reveals a better-suited
-  pre-built agent, use that instead. Resolve before the first `KnowBrain` call is written. If Jenova
-  ships the agent-creation API (§5), a purpose-built agent with `profile.json` as a knowledge base
-  becomes the better option.
+| `KnowBrain` task (§6.2) | Agent slug | Why |
+|---|---|---|
+| Find and rank postings | `career-advisor` | Career strategist with real-time research |
+| Assess fit against a posting | `resume-screener` | Built to evaluate a resume *against* a job description for hiring managers. Pointing it at your own application inverts it into precisely the fit question |
+| Draft tailored bullets and free-text answers | `resume-and-cover-letter-writer` | Purpose-built for tailored, ATS-optimised documents |
+| Replanning and everything else | `jenova` | General-purpose fallback |
 
-Everything else in this spec is decided.
+**One risk to instrument from run one.** `resume-and-cover-letter-writer` exists to make an applicant
+look good; §7.4 exists to stop that the moment it crosses into invention. The validator fails closed,
+so this is a *friction* risk rather than a correctness one — but a high rejection rate means wasted
+spend and repeated retries on the slowest path in the system.
+
+Log the validator's rejection rate **per agent** to `runs/` from the first application. If it runs
+high, fall back to `jenova` with tightly-scoped instructions, where the framing is ours rather than
+the pre-built agent's.
+
+If Jenova ships the agent-creation API (§5), a purpose-built agent carrying `profile.json` as its
+knowledge base supersedes this entire table.
+
+Every decision in this spec is now settled.
