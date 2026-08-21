@@ -1,15 +1,22 @@
 /** A generation-scoped element reference, e.g. "g3-r12". Only valid within its generation. */
 export type Ref = string;
 
-export type Action =
+/** Changes the world. Returns nothing. Can be gated. */
+export type Effect =
   | { kind: "navigate"; url: string }
   | { kind: "click"; ref: Ref }
   | { kind: "fill"; ref: Ref; value: string }
   | { kind: "select"; ref: Ref; value: string }
   | { kind: "upload"; ref: Ref; path: string }
-  | { kind: "readPage" }
-  | { kind: "capturePage" }
   | { kind: "submit"; ref: Ref };
+
+/** Changes nothing. Returns data. Never gated — see §7.3. */
+export type Observation =
+  | { kind: "readPage" }
+  | { kind: "capturePage" };
+
+/** Union used only for audit-log typing, where both are recorded. */
+export type Action = Effect | Observation;
 
 export interface ToolMeta {
   /** Can the effect be undone without contacting anyone? */
@@ -19,19 +26,31 @@ export interface ToolMeta {
 }
 
 /**
- * Static per-tool safety metadata (spec §7.1).
+ * Properties derived from the RESOLVED DOM element, not from the model (§7.1).
  *
- * These are properties of the TOOL, never of the call. A model is not consulted
- * about them and cannot influence them. Adding a new Action kind without adding
- * a row here is a type error, which is the point.
+ * The model chooses the action kind, so the kind alone cannot be trusted to
+ * distinguish a harmless click from a submit. These come from the page.
  */
-export const TOOL_META: Record<Action["kind"], ToolMeta> = {
-  navigate:    { reversible: true,  outwardFacing: false },
-  click:       { reversible: true,  outwardFacing: false },
-  fill:        { reversible: true,  outwardFacing: false },
-  select:      { reversible: true,  outwardFacing: false },
-  upload:      { reversible: true,  outwardFacing: false },
-  readPage:    { reversible: true,  outwardFacing: false },
-  capturePage: { reversible: true,  outwardFacing: false },
-  submit:      { reversible: false, outwardFacing: true  },
+export interface ElementFacts {
+  /** Activating this element submits a form. */
+  submitCapable: boolean;
+}
+
+/**
+ * Static per-effect safety metadata (spec §7.1).
+ *
+ * The floor, not the ceiling: element-derived facts can only ADD gating.
+ * Observations are absent by construction — they cannot be gated because they
+ * cannot be irreversible.
+ *
+ * `upload` is outward-facing: many ATS platforms XHR-upload the file the moment
+ * it is attached, before any submit. It is not reversible in any useful sense.
+ */
+export const EFFECT_META: Record<Effect["kind"], ToolMeta> = {
+  navigate: { reversible: true,  outwardFacing: false },
+  click:    { reversible: true,  outwardFacing: false },
+  fill:     { reversible: true,  outwardFacing: false },
+  select:   { reversible: true,  outwardFacing: false },
+  upload:   { reversible: false, outwardFacing: true  },
+  submit:   { reversible: false, outwardFacing: true  },
 };
