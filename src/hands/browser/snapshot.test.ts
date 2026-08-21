@@ -6,9 +6,14 @@ import { PAGE_SCRIPT, renderSnapshot } from "./snapshot.js";
  * Build the page function the SAME way readPage() does — from the file text,
  * never from `.toString()` on a bundled function. This is the only construction
  * that exercises the production path.
+ *
+ * The parentheses are mandatory, not cosmetic. page-script.js opens with a
+ * `// @ts-check` line comment, so `"return " + src` puts a line terminator
+ * between `return` and the expression — ASI inserts a semicolon, the function
+ * is discarded, and `new Function(...)()` yields `undefined`.
  */
 function loadPageFn(): (doc: Document, generation: number) => any[] {
-  return new Function("return " + PAGE_SCRIPT)();
+  return new Function("return (" + PAGE_SCRIPT + ")")();
 }
 
 function fakeDoc(html: string): Document {
@@ -25,7 +30,11 @@ describe("page-script", () => {
   it("contains no bundler-injected helpers", () => {
     // If a bundler ever starts processing this file, these appear and the
     // function breaks inside the page. Cheap canary for the whole bug class.
-    expect(PAGE_SCRIPT).not.toMatch(/__name|__spreadValues|__async|__toESM/);
+    //
+    // Matches CALL SITES, not bare identifiers: the file's own documentation
+    // names `__name` while explaining the historical bug, and a broader regex
+    // would fire on that prose. esbuild always emits these as invocations.
+    expect(PAGE_SCRIPT).not.toMatch(/__name\s*\(|__spreadValues\s*\(|__async\s*\(|__toESM\s*\(/);
   });
 
   it("stamps each interactive element with a generation-scoped ref", () => {
@@ -102,6 +111,13 @@ describe("page-script", () => {
     fn(doc, 2);
     expect(doc.querySelector(`[data-clippy-ref="g1-r0"]`)).toBeNull();
     expect(doc.querySelector(`[data-clippy-ref="g2-r0"]`)).not.toBeNull();
+  });
+
+  it("loads via the same wrapper readPage uses — parens prevent ASI", () => {
+    // "return " + src would put a line terminator before the expression
+    // (page-script.js opens with a comment), so ASI would yield undefined.
+    expect(typeof new Function("return (" + PAGE_SCRIPT + ")")()).toBe("function");
+    expect(new Function("return " + PAGE_SCRIPT)()).toBeUndefined();
   });
 });
 

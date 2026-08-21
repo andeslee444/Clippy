@@ -43,7 +43,7 @@ export async function readPage(page: Page): Promise<Snapshot> {
   const gen = ++generation;
   const nodes = (await page.evaluate(
     ({ src, g }: { src: string; g: number }) =>
-      (new Function("return " + src)() as (d: Document, n: number) => unknown)(document, g),
+      (new Function("return (" + src + ")")() as (d: Document, n: number) => unknown)(document, g),
     { src: PAGE_SCRIPT, g: gen },
   )) as RefNode[];
   return { generation: gen, url: page.url(), title: await page.title(), nodes };
