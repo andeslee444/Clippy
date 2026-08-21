@@ -202,6 +202,7 @@ export class OpenAICompatBrain implements ActBrain {
       // One `role:"tool"` message PER call — unlike Anthropic, where every result
       // for a turn rides in a single user message. Omitting any one of them is a
       // 400, not a degraded response.
+      const before = tools.steps.length;
       for (const call of calls) {
         if (call.type !== "function") {
           messages.push({ role: "tool", tool_call_id: call.id, content: "ERROR: unsupported tool type" });
@@ -213,6 +214,9 @@ export class OpenAICompatBrain implements ActBrain {
           content: await this.#dispatch(call.function.name, call.function.arguments, tools),
         });
       }
+
+      // Charge the step budget for what actually happened — see act-brain.ts.
+      for (const step of tools.steps.slice(before)) budget.record(step.outcome);
 
       const declined = tools.steps.find((s) => s.outcome.kind === "stuck");
       if (declined && declined.outcome.kind === "stuck") {

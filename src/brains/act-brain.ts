@@ -91,6 +91,7 @@ export class ClaudeActBrain implements ActBrain {
 
       // All results for one assistant turn go back in ONE user message.
       // Splitting them trains the model out of parallel tool use.
+      const before = tools.steps.length;
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
       for (const call of calls) {
         results.push({
@@ -100,6 +101,12 @@ export class ClaudeActBrain implements ActBrain {
         });
       }
       messages.push({ role: "user", content: results });
+
+      // Charge the step budget for what actually happened. Without this,
+      // `steps` stays 0 forever and maxSteps is never enforced — only the cost
+      // ceiling would ever stop a runaway loop, and the run reports "0 steps"
+      // however much work it did. `record` skips stale-ref retries (§8.4).
+      for (const step of tools.steps.slice(before)) budget.record(step.outcome);
 
       const declined = tools.steps.find((s) => s.outcome.kind === "stuck");
       if (declined && declined.outcome.kind === "stuck") {

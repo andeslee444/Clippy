@@ -1,20 +1,27 @@
 import { describe, it, expect, vi } from "vitest";
 import { OpenAICompatBrain, PROVIDERS, costOf } from "./openai-brain.js";
 import type { BrainTools } from "./types.js";
-import { DEFAULT_OBJECTIVE } from "../orchestrator/types.js";
+import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 import type OpenAI from "openai";
 
 const obj = { ...DEFAULT_OBJECTIVE, goal: "fill in my first name" };
 
 const tools = (): BrainTools & { calls: string[] } => {
   const calls: string[] = [];
-  return {
+  const self: BrainTools & { calls: string[] } = {
     calls,
     steps: [],
     readPage: async () => { calls.push("read"); return 'g1-r0 textbox "First Name*"'; },
     capturePage: async () => ({ base64: "" }),
-    perform: async (e) => { calls.push(`${e.kind}`); return `ok — ${e.kind} ok`; },
+    perform: async (e) => {
+      calls.push(`${e.kind}`);
+      // Mirror makeTools: every perform appends a StepRecord. Without this the
+      // budget assertions below would pass vacuously against an empty array.
+      (self.steps as StepRecord[]).push({ action: e, outcome: { kind: "ok" }, effect: "ok" });
+      return `ok — ${e.kind} ok`;
+    },
   };
+  return self;
 };
 
 /** Fake client returning a scripted sequence of completions. */
@@ -138,5 +145,28 @@ describe("OpenAICompatBrain.pursue", () => {
     const r = await new OpenAICompatBrain(PROVIDERS.deepseek!, "sk-x", client)
       .pursue({ ...obj, maxCost: 0.0000001 }, tools());
     expect(r.kind).toBe("stuck");
+  });
+
+  it("charges the step budget for effects that were performed", async () => {
+    // Regression: neither brain called budget.record(), so `steps` stayed 0
+    // forever, maxSteps was never enforced, and a run that filled two fields
+    // reported "DONE — 0 steps". Only the cost ceiling could stop a runaway.
+    const r = await brain(fakeClient([
+      { tool_calls: [toolCall("c1", "fill", { ref: "g1-r0", value: "a" }),
+                     toolCall("c2", "fill", { ref: "g1-r1", value: "b" })] },
+      { content: "done" },
+    ])).pursue(obj, tools());
+    expect(r.steps).toBe(2);
+  });
+
+  it("stops when the STEP budget is exhausted, not just the cost budget", async () => {
+    const client = fakeClient(Array.from({ length: 20 }, () => ({
+      tool_calls: [toolCall("c", "fill", { ref: "g1-r0", value: "x" })],
+    })));
+    const r = await brain(client).pursue({ ...obj, maxSteps: 3, maxCost: 1000 }, tools());
+    expect(r.kind).toBe("stuck");
+    if (r.kind !== "stuck") throw new Error("unreachable");
+    expect(r.reason).toMatch(/step budget/i);
+    expect(r.steps).toBe(3);
   });
 });
