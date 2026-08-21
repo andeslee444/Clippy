@@ -7,6 +7,10 @@ import { capturePage } from "../hands/browser/capture.js";
 import { GatedExecutor } from "../hands/execute.js";
 import { AuditLog } from "../trust/audit.js";
 import type { Action, Effect } from "../hands/types.js";
+import { makeTools } from "../brains/tools.js";
+import { ScriptedBrain } from "../brains/scripted-brain.js";
+import { ClaudeActBrain } from "../brains/act-brain.js";
+import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 
 const HELP = `
   read                 snapshot the page and print the ref'd tree
@@ -16,6 +20,8 @@ const HELP = `
   fill <ref> <value>   fill by ref
   select <ref> <val>   choose an option
   submit <ref>         submit (always gated)
+  do <goal>            let the brain pursue a goal (needs ANTHROPIC_API_KEY)
+  demo                 run a scripted objective — no API key needed
   help                 this
   quit
 `;
@@ -64,6 +70,20 @@ process.on("SIGINT", async () => {
   process.exit(130);
 });
 
+const steps: StepRecord[] = [];
+const brainTools = makeTools({
+  runEffect: (effect) => executor.runEffect(effect),
+  readPage: async () => {
+    inFlight = { kind: "readPage" };
+    return renderSnapshot(await executor.observe({ kind: "readPage" }, () => readPage(session.page)));
+  },
+  capturePage: async () => {
+    inFlight = { kind: "capturePage" };
+    return executor.observe({ kind: "capturePage" }, () => capturePage(session.page));
+  },
+  onStep: (r) => steps.push(r),
+});
+
 console.log(HELP);
 
 for (;;) {
@@ -90,6 +110,21 @@ for (;;) {
       const { writeFile } = await import("node:fs/promises");
       await writeFile("/tmp/clippy-capture.png", Buffer.from(c.base64, "base64"));
       console.log(`${c.width}x${c.height} truncated=${c.truncated} -> /tmp/clippy-capture.png`);
+      continue;
+    }
+
+    if (cmd === "do" || cmd === "demo") {
+      const goal = rest.join(" ");
+      const brain =
+        cmd === "demo"
+          ? new ScriptedBrain([{ kind: "fill", ref: rest[0]!, value: rest.slice(1).join(" ") }])
+          : new ClaudeActBrain();
+      steps.length = 0;
+      const result = await brain.pursue({ ...DEFAULT_OBJECTIVE, goal }, brainTools);
+      console.log(
+        `\n${result.kind.toUpperCase()} — ${result.steps} steps, $${result.cost.toFixed(4)}` +
+          ("reason" in result ? `\n  ${result.reason}` : ""),
+      );
       continue;
     }
 
