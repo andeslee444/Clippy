@@ -110,8 +110,13 @@ export default defineConfig({
 
 - [ ] **Step 5: Install and verify**
 
-Run: `npm install && npm run typecheck`
-Expected: install completes; `tsc --noEmit` exits 0 with no output (no source files yet, which is fine).
+Run: `npm install`
+Expected: install completes, exit 0.
+
+Do **not** run `typecheck` yet: `src/` does not exist, so the tsconfig `include`
+globs match nothing and `tsc` exits non-zero with `TS18003: No inputs were found`.
+That is correct behaviour, not a misconfiguration. Task 2 creates the first source
+file; typecheck is verified there.
 
 - [ ] **Step 6: Commit**
 
