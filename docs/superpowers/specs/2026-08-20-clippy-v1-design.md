@@ -69,7 +69,7 @@ Each of these is a real part of the product vision, explicitly deferred:
 | Deferred | Why | How v1 prepares |
 |---|---|---|
 | **Screen observation** ("watch everything I do") | Highest cost, highest risk. The distillation policy — what to keep, what to discard — can't be designed before we know what's worth keeping | `runs/*.jsonl` becomes the corpus that informs it |
-| **Vector memory / RAG over user activity** | Nothing to embed yet | Traces are structured for later ingestion |
+| **Vector memory / RAG over user activity** | Nothing to embed yet, and retrieval built before you know what gets retrieved produces the wrong schema | Traces carry structured keys from run one; additive path documented in §10.1 |
 | **Native app control** (Word, Finder, Mail) | Requires macOS Accessibility APIs — an entire second control mechanism | `hands/` interface is tool-agnostic; browser is the first implementation, not the only possible one |
 | **Auto-created custom agents** | **Blocked externally** — see §5 | `KnowBrain` is the seam this would plug into |
 | **Recipes / learned workflows** | Needs run history to learn from | Same JSONL corpus |
@@ -361,7 +361,54 @@ source of factual truth for §7.4.
 **`runs/*.jsonl`** — append-only, one file per run. Each line records a step: observation digest,
 action, provenance, result, cost, timestamp. Gates and their outcomes are recorded, as are aborts.
 
+Each step also carries **structured keys** — `domain`, `ats` (greenhouse / workday / lever / other),
+`section` (contact / work_history / eeo / questions / upload), and `outcome`. These are cheap to
+capture during a run and impossible to reconstruct afterward, which is the whole reason §10.1 works.
+
 Both are gitignored. `runs/` is the seed corpus for the deferred pillars (§4).
+
+### 10.1 Path to retrieval
+
+Deferring the vector database costs nothing because the storage path is additive, not a rewrite:
+
+```
+runs/*.jsonl  →  SQLite (relational)  →  + sqlite-vec (vectors, same file)
+```
+
+Adding `sqlite-vec` later is a virtual table inside the database that already holds the metadata.
+No second store, no synchronisation, no migration.
+
+**Engine: `sqlite-vec`.** Embedded, in-process, one file, MIT-licensed, reachable through
+`better-sqlite3`; comfortable to roughly 1M vectors. Chosen over LanceDB (heavier native dependency;
+its advantages only appear well above the scale v1 can reach), over Chroma / Qdrant / Weaviate /
+pgvector (server-based — wrong shape for a local-first desktop app), and over hnswlib-node / faiss-node
+(an index, not a database: no metadata, no join, so the surrounding store gets hand-built).
+
+**Most retrieval here is not semantic.** The unit worth recalling is a *procedure* — "how did a
+Workday work-history section go last time" — and that is found by structured key, not by cosine
+similarity:
+
+```sql
+WHERE ats = 'workday' AND section = 'work_history' AND outcome = 'success'
+```
+
+Plain SQL over the keys above answers the common case. Vector search is the fallback for queries that
+cannot be written as a `WHERE` clause.
+
+**Grain: segment, not step or run.** Step-level embeddings are useless ("you clicked a button");
+run-level are too coarse ("you applied to Acme"). The useful unit is one coherent sub-procedure with
+its structured keys and outcome attached. Segments are derived from `runs/*.jsonl` at ingestion time,
+which is why the keys must be captured during the run.
+
+**Embedding model: local**, via `transformers.js` (`bge-small-en` or `all-MiniLM-L6-v2`), in-process,
+no network. A product premised on observing the user's screen should not ship that content to an
+embeddings API. Embedding happens once on write, so local speed is irrelevant. Note that the Claude
+API documents no embeddings endpoint — do not plan around one without verifying.
+
+**Trigger to build it:** the first time a wanted retrieval cannot be expressed as a `WHERE` clause.
+Not a run count, not a corpus size — that specific moment. Expect it to arrive with screen
+observation rather than with job applications, since applications have clean structured keys and
+general screen activity does not.
 
 ## 11. Testing strategy
 
