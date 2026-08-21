@@ -1,0 +1,152 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod/v4";
+import { BudgetTracker } from "../orchestrator/budget.js";
+import { compactMessages } from "../orchestrator/compact-messages.js";
+import type { Objective, ObjectiveResult } from "../orchestrator/types.js";
+import type { ActBrain, BrainTools } from "./types.js";
+
+/** claude-opus-5, USD per token. Cache reads bill at a tenth of fresh input. */
+const IN = 5 / 1_000_000;
+const OUT = 25 / 1_000_000;
+
+/** BetaUsage carries token counts, not a cost — there is no `usage.cost` field. */
+export function costOf(usage: Anthropic.Beta.BetaUsage): number {
+  const cached = usage.cache_read_input_tokens ?? 0;
+  return usage.input_tokens * IN + cached * IN * 0.1 + usage.output_tokens * OUT;
+}
+
+const SYSTEM = `You fill out job application forms in a real browser on behalf of a real person.
+
+You see the page as a list of elements, each with a stable ref like "g1787291892-r26".
+Always act by ref. Never guess a ref that is not in the current listing.
+
+Rules that are enforced, not advisory:
+- A "STALE" result means the page re-rendered and NOTHING happened. Call read_page
+  again for fresh refs, then continue. This costs you nothing.
+- Clicking an element that submits a form is REFUSED. Use the submit tool instead,
+  which asks the human first.
+- A "DECLINED" result means the human said no. Do not retry it. Stop and explain.
+
+Fill only fields you have been given values for. If a required field has no value,
+stop and say which field is missing rather than inventing one.`;
+
+const TOOLS: Anthropic.Beta.BetaTool[] = [
+  { name: "read_page", description: "Read the current page as a list of elements with refs. Call this first, and again after anything changes the page.", input_schema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "fill", description: "Type a value into a text field, by ref.", input_schema: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref", "value"], additionalProperties: false } },
+  { name: "select", description: "Choose an option in a dropdown, by ref.", input_schema: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref", "value"], additionalProperties: false } },
+  { name: "click", description: "Click a non-submitting element, by ref. Refused for anything that submits a form.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
+  { name: "submit", description: "Submit the form. Always asks the human for approval first, and may be declined.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
+];
+
+const RefArg = z.object({ ref: z.string() });
+const ValueArg = z.object({ ref: z.string(), value: z.string() });
+
+/**
+ * Drives one objective with a hand-written agentic loop.
+ *
+ * The SDK's Tool Runner was ruled out: calling `setMessagesParams()` mid-loop —
+ * the only compaction hook it offers — sets an internal `#mutated` flag that
+ * skips pushing the assistant turn, so the turn's tool calls are silently
+ * dropped and never execute. Owning the message array avoids that entirely and
+ * makes §8.3 a straightforward transformation of an array we control.
+ */
+export class ClaudeActBrain implements ActBrain {
+  private readonly client: Anthropic;
+
+  constructor(client?: Anthropic) {
+    // Zero-arg resolves ANTHROPIC_API_KEY, then ANTHROPIC_AUTH_TOKEN, then an
+    // `ant auth login` profile — no env var is not the same as no credentials.
+    this.client = client ?? new Anthropic();
+  }
+
+  async pursue(objective: Objective, tools: BrainTools): Promise<ObjectiveResult> {
+    const budget = new BudgetTracker(objective);
+    let messages: Anthropic.Beta.BetaMessageParam[] = [
+      { role: "user", content: objective.goal },
+    ];
+
+    for (;;) {
+      const exhausted = budget.exhausted();
+      if (exhausted) {
+        return { kind: "stuck", reason: exhausted, steps: budget.steps, cost: budget.cost };
+      }
+
+      const response = await this.client.beta.messages.create({
+        model: "claude-opus-5",
+        max_tokens: 8000,
+        // Simple, high-volume decisions: fewer consolidated calls, less preamble.
+        output_config: { effort: "low" },
+        thinking: { type: "adaptive" },
+        // Stable prefix — system + tools are resent every turn.
+        cache_control: { type: "ephemeral" },
+        system: SYSTEM,
+        tools: TOOLS,
+        messages,
+      });
+
+      budget.spend(costOf(response.usage));
+
+      if (response.stop_reason === "refusal") {
+        return { kind: "stuck", reason: "model refused", steps: budget.steps, cost: budget.cost };
+      }
+
+      messages.push({ role: "assistant", content: response.content });
+
+      // Server-side tool paused the turn; resend to continue.
+      if (response.stop_reason === "pause_turn") continue;
+
+      const calls = response.content.filter(
+        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
+      );
+      if (calls.length === 0) {
+        return { kind: "done", steps: budget.steps, cost: budget.cost };
+      }
+
+      // All results for one assistant turn go back in ONE user message.
+      // Splitting them trains the model out of parallel tool use.
+      const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+      for (const call of calls) {
+        results.push({
+          type: "tool_result",
+          tool_use_id: call.id,
+          content: await this.#dispatch(call, tools),
+        });
+      }
+      messages.push({ role: "user", content: results });
+
+      const declined = tools.steps.find((s) => s.outcome.kind === "stuck");
+      if (declined && declined.outcome.kind === "stuck") {
+        return { kind: "stuck", reason: declined.outcome.reason, steps: budget.steps, cost: budget.cost };
+      }
+
+      // §8.3 — shrink superseded page snapshots. Ids and pairing are preserved.
+      messages = compactMessages(messages);
+    }
+  }
+
+  async #dispatch(call: Anthropic.Beta.BetaToolUseBlock, tools: BrainTools): Promise<string> {
+    try {
+      switch (call.name) {
+        case "read_page":
+          return await tools.readPage();
+        case "fill": {
+          const { ref, value } = ValueArg.parse(call.input);
+          return await tools.perform({ kind: "fill", ref, value });
+        }
+        case "select": {
+          const { ref, value } = ValueArg.parse(call.input);
+          return await tools.perform({ kind: "select", ref, value });
+        }
+        case "click":
+          return await tools.perform({ kind: "click", ref: RefArg.parse(call.input).ref });
+        case "submit":
+          return await tools.perform({ kind: "submit", ref: RefArg.parse(call.input).ref });
+        default:
+          return `ERROR: unknown tool ${call.name}`;
+      }
+    } catch (err) {
+      // Malformed arguments from the model. Tell it; do not abort the run.
+      return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+}
