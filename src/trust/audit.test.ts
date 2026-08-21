@@ -53,4 +53,10 @@ describe("AuditLog", () => {
     expect(lines).toHaveLength(4);
     expect(JSON.parse(lines[0]!).action.kind).toBe("readPage");
   });
+
+  it("reports an unwritable path as an error from attempt, not a process crash", async () => {
+    const log = new AuditLog("/proc/definitely/not/writable/run.jsonl");
+    await expect(log.attempt({ kind: "readPage" }, { gated: false }))
+      .rejects.toThrow(/Audit log unavailable/);
+  });
 });

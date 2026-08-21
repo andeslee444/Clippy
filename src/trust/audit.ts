@@ -16,21 +16,31 @@ export interface Outcome {
  */
 export class AuditLog {
   #seq = 0;
+  #failure: Error | null = null;
   #ready: Promise<void>;
 
   constructor(private readonly path: string) {
-    this.#ready = mkdir(dirname(path), { recursive: true }).then(() => undefined);
+    this.#ready = mkdir(dirname(path), { recursive: true })
+      .then(() => undefined)
+      .catch((err: Error) => { this.#failure = err; });
+  }
+
+  async #check(): Promise<void> {
+    await this.#ready;
+    if (this.#failure) {
+      throw new Error(`Audit log unavailable at ${this.path}: ${this.#failure.message}`);
+    }
   }
 
   async attempt(action: Action, meta: { gated: boolean }): Promise<number> {
-    await this.#ready;
+    await this.#check();
     const seq = ++this.#seq;
     await this.#write({ phase: "attempt", seq, ts: Date.now(), action, gated: meta.gated });
     return seq;
   }
 
   async outcome(seq: number, outcome: Outcome): Promise<void> {
-    await this.#ready;
+    await this.#check();
     await this.#write({ phase: "outcome", seq, ts: Date.now(), ...outcome });
   }
 
