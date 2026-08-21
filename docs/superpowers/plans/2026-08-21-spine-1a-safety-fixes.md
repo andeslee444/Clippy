@@ -556,7 +556,11 @@ describe("page-script", () => {
   it("contains no bundler-injected helpers", () => {
     // If a bundler ever starts processing this file, these appear and the
     // function breaks inside the page. Cheap canary for the whole bug class.
-    expect(PAGE_SCRIPT).not.toMatch(/__name|__spreadValues|__async|__toESM/);
+    //
+    // Matches CALL SITES, not bare identifiers: the file's own documentation
+    // names `__name` while explaining the historical bug, and a broader regex
+    // would fire on that prose. esbuild always emits these as invocations.
+    expect(PAGE_SCRIPT).not.toMatch(/__name\s*\(|__spreadValues\s*\(|__async\s*\(|__toESM\s*\(/);
   });
 
   it("stamps each interactive element with a generation-scoped ref", () => {
@@ -1250,7 +1254,8 @@ const doc = (html: string) => parseHTML(`<html><body>${html}</body></html>`).doc
 
 describe("regressions from the Plan 1 review", () => {
   it("C1: page script carries no bundler helpers and loads standalone", () => {
-    expect(PAGE_SCRIPT).not.toMatch(/__name|__spreadValues|__async|__toESM/);
+    // Call sites, not bare identifiers — the file documents `__name` in prose.
+    expect(PAGE_SCRIPT).not.toMatch(/__name\s*\(|__spreadValues\s*\(|__async\s*\(|__toESM\s*\(/);
     expect(typeof pageFn()).toBe("function");
   });
 
