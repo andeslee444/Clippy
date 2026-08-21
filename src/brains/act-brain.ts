@@ -4,6 +4,7 @@ import { BudgetTracker } from "../orchestrator/budget.js";
 import { compactMessages } from "../orchestrator/compact-messages.js";
 import type { Objective, ObjectiveResult } from "../orchestrator/types.js";
 import type { ActBrain, BrainTools } from "./types.js";
+import { SYSTEM } from "./system-prompt.js";
 
 /** claude-opus-5, USD per token. Cache reads bill at a tenth of fresh input. */
 const IN = 5 / 1_000_000;
@@ -15,20 +16,6 @@ export function costOf(usage: Anthropic.Beta.BetaUsage): number {
   return usage.input_tokens * IN + cached * IN * 0.1 + usage.output_tokens * OUT;
 }
 
-const SYSTEM = `You fill out job application forms in a real browser on behalf of a real person.
-
-You see the page as a list of elements, each with a stable ref like "g1787291892-r26".
-Always act by ref. Never guess a ref that is not in the current listing.
-
-Rules that are enforced, not advisory:
-- A "STALE" result means the page re-rendered and NOTHING happened. Call read_page
-  again for fresh refs, then continue. This costs you nothing.
-- Clicking an element that submits a form is REFUSED. Use the submit tool instead,
-  which asks the human first.
-- A "DECLINED" result means the human said no. Do not retry it. Stop and explain.
-
-Fill only fields you have been given values for. If a required field has no value,
-stop and say which field is missing rather than inventing one.`;
 
 const TOOLS: Anthropic.Beta.BetaTool[] = [
   { name: "read_page", description: "Read the current page as a list of elements with refs. Call this first, and again after anything changes the page.", input_schema: { type: "object", properties: {}, additionalProperties: false } },

@@ -10,6 +10,8 @@ import type { Action, Effect } from "../hands/types.js";
 import { makeTools } from "../brains/tools.js";
 import { ScriptedBrain, type ScriptedStep } from "../brains/scripted-brain.js";
 import { ClaudeActBrain } from "../brains/act-brain.js";
+import { OpenAICompatBrain } from "../brains/openai-brain.js";
+import type { ActBrain } from "../brains/types.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 
 const HELP = `
@@ -20,7 +22,7 @@ const HELP = `
   fill <ref> <value>   fill by ref
   select <ref> <val>   choose an option
   submit <ref>         submit (always gated)
-  do <goal>            let the brain pursue a goal (needs ANTHROPIC_API_KEY)
+  do <goal>            let the brain pursue a goal (uses CLIPPY_BRAIN)
   demo <kind> <name> [v] run one scripted effect by field name — no API key
   help                 this
   quit
@@ -132,7 +134,12 @@ for (;;) {
         continue;
       }
 
-      const brain = cmd === "demo" ? new ScriptedBrain([scripted!]) : new ClaudeActBrain();
+      const brain: ActBrain =
+        cmd === "demo"
+          ? new ScriptedBrain([scripted!])
+          : (process.env.CLIPPY_BRAIN ?? "anthropic") === "anthropic"
+            ? new ClaudeActBrain()
+            : OpenAICompatBrain.fromEnv();
       steps.length = 0;
       const result = await brain.pursue({ ...DEFAULT_OBJECTIVE, goal }, brainTools);
       console.log(

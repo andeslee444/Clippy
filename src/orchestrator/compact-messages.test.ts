@@ -27,7 +27,11 @@ describe("compactMessages", () => {
   it("shrinks older page results", () => {
     const msgs: Msg[] = [{ role: "user", content: "go" }, ...turn("a", 1), ...turn("b", 2)];
     const out = compactMessages(msgs);
-    expect(JSON.stringify(out)).not.toContain(tree(1));
+    // NOT `toContain(tree(1))`: JSON.stringify escapes the quotes inside the
+    // tree, so that literal can never match and the assertion passes vacuously.
+    // Verified by disabling compaction entirely — the old form still passed.
+    expect(JSON.stringify(out)).not.toContain("g1-r0");
+    expect(JSON.stringify(out)).toContain("superseded");
   });
 
   it("preserves every tool_use_id — the API rejects an unmatched pair", () => {
@@ -65,7 +69,7 @@ describe("compactMessages", () => {
     ];
     const out = JSON.stringify(compactMessages(msgs));
     expect(out).toContain(big);
-    expect(out).not.toContain(tree(9));
+    expect(out).not.toContain("g9-r0");
   });
 
 });

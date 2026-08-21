@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
+    "openai": "^7.5.0",
     "playwright-core": "^1.49.0",
     "zod": "^3.23.8"
   },
