@@ -68,7 +68,7 @@ Each of these is a real part of the product vision, explicitly deferred:
 
 | Deferred | Why | How v1 prepares |
 |---|---|---|
-| **Screen observation** ("watch everything I do") | Highest cost, highest risk. The distillation policy — what to keep, what to discard — can't be designed before we know what's worth keeping | `runs/*.jsonl` becomes the corpus that informs it |
+| **Ambient desktop observation** ("watch everything I do, continuously") | Highest cost, highest risk. The distillation policy — what to keep, what to discard — can't be designed before we know what's worth keeping | `runs/*.jsonl` becomes the corpus that informs it. Note: **on-demand page comprehension is in v1** — see §8.2 — this row covers only the continuous, whole-desktop version |
 | **Vector memory / RAG over user activity** | Nothing to embed yet, and retrieval built before you know what gets retrieved produces the wrong schema | Traces carry structured keys from run one; additive path documented in §10.1 |
 | **Native app control** (Word, Finder, Mail) | Requires macOS Accessibility APIs — an entire second control mechanism | `hands/` interface is tool-agnostic; browser is the first implementation, not the only possible one |
 | **Auto-created custom agents** | **Blocked externally** — see §5 | `KnowBrain` is the seam this would plug into |
@@ -89,7 +89,7 @@ Findings from `https://www.jenova.ai/platform/docs`, recorded because they shape
 | **Agents can only be created/edited in the dashboard.** Docs: *"API support for creating and editing agents is coming soon."* | The "creates a custom agent for you if one doesn't exist" feature **cannot be built today.** `GET /agents` lists; nothing provisions. Revisit when the API ships. |
 | **No `tools` request parameter and no tool-call response blocks.** Request body is `agent`, `content`, `file_urls`, `user`, `session_name`, `ephemeral`, `stream`, `model`. MCP servers attach to an agent in the dashboard and execute server-side. | Jenova's unit of work is **a finished task, not a next step.** Unusable as the act-loop decision engine without parsing structured data out of prose. |
 | **MCP servers are remote and dashboard-configured** | For Jenova to drive the local machine, the machine would need an internet-reachable MCP endpoint. Rejected: unacceptable attack surface, plus tunnel latency on every click. |
-| **File input requires publicly accessible HTTPS URLs** (10 files, 20 MB each) | Screen observation via Jenova would mean publishing desktop screenshots to public URLs. Independently disqualifying for that pillar. |
+| **File input requires publicly accessible HTTPS URLs** (10 files, 20 MB each) | Any image sent to Jenova must first be published to a public URL. This is why **vision is `ActBrain`-only** (§8.2), and it independently disqualifies Jenova from the ambient-observation pillar. |
 | Rate limits: 60 RPM, 1,000 RPD, 5 concurrent (per developer account, listed as defaults) | Fine for single-user. Would need renegotiation for any multi-user future. |
 | Billing: $0.01 per persistent session, variable per run, $0.50 hold per run | Prefer `ephemeral: true` for one-shot knowledge queries; reserve persistent sessions for multi-turn work. |
 | Privacy: API data not used to train Jenova models; commercial channels/opt-outs with third-party providers; US infrastructure | Acceptable for the knowledge-work turns. Reinforces keeping raw activity data local. |
@@ -140,6 +140,8 @@ user types goal → orchestrator creates Run
   needs — see §7.
 - Prompt caching (`cache_control`) on the stable prefix (system prompt + tool definitions), since
   those bytes are resent on every one of the ~40 turns.
+- **The only vision-capable brain.** Screenshots from `capturePage()` (§8.2) arrive here as native
+  image content blocks and go nowhere else.
 
 **`KnowBrain`** — task-shaped turns. `ask(question, context) → Answer`. Low volume, latency-tolerant,
 genuine judgment.
@@ -225,12 +227,31 @@ $10.00. These are opening guesses to be re-tuned against real runs; the point is
 and are enforced from run one. Exceeding any of them yields STUCK, not FAILED (§8.4) — a budget
 overrun is a question for the user, not a verdict on the objective.
 
-### 8.2 Observation format
+### 8.2 Observation: two modes
 
-`readPage()` returns the **accessibility tree with stable element refs**, not screenshots:
-roughly 2 KB of text versus ~1 MB per image, and the model receives element *identity* rather than
-pixel coordinates that break the moment the page scrolls. Screenshots remain available as a fallback
-for canvas-rendered applications only.
+**`readPage()` — the default.** Returns the accessibility tree with stable element refs. Roughly 2 KB
+of text versus ~1 MB per image, and the model receives element *identity* rather than pixel
+coordinates that break the moment the page scrolls. Runs on every act-loop step.
+
+**`capturePage()` — on demand.** Returns a full-page screenshot (CDP `Page.captureScreenshot` with
+`captureBeyondViewport: true`; downscaled, with a dimension cap for pathologically long pages)
+**together with** the tree. For pages the tree describes poorly: visually grouped forms, custom widgets
+that serialise as anonymous containers, sections whose labels are images.
+
+Two rules govern it.
+
+**The screenshot is for comprehension; the tree is for actuation.** The model may consult the image to
+decide *what* to do, but every action it emits references a `ref_N` — never a pixel coordinate. This
+keeps the snapshot-generation defense in §8.4 fully intact: a coordinate click cannot be validated
+against a re-render, so a stale one lands somewhere arbitrary and does so silently.
+
+**Vision is `ActBrain`-only.** Claude accepts images as native content blocks. Jenova requires
+publicly accessible HTTPS URLs (§5), so sending a screenshot of an application form to `KnowBrain`
+would mean publishing it to a public URL. Never done.
+
+**Triggers:** a "Look at this page" button in the panel (§9.3), and `ActBrain` may emit `capturePage`
+as an action when the tree comes back uninformative. Same code path. Ungated under §7.1 — read-only
+and reversible — which is comfortable precisely because of the dedicated profile in §3.1.
 
 ### 8.3 History compaction
 
@@ -240,6 +261,10 @@ result. The full tree exists only for the current step and is discarded afterwar
 This is simultaneously the largest cost lever (the difference between ~2 KB and ~80 KB of input per
 decision by mid-task) and the largest quality lever — a model reading a clean twelve-line action
 history reasons materially better than one wading through forty DOM dumps.
+
+Screenshots obey a stricter rule: **a screenshot exists only in the turn that consumes it** and is
+evicted from history immediately afterward. Two accumulated screenshots would outweigh the entire
+remaining context of a 40-step run.
 
 ### 8.4 Staleness and failure handling
 
@@ -262,6 +287,7 @@ history reasons materially better than one wading through forty DOM dumps.
 | Model output unparseable | Retry with parse error appended, max 2 |
 | Login wall | → STUCK immediately |
 | CAPTCHA | → STUCK immediately; never attempted |
+| No actionable tree (canvas form, embedded PDF, form-as-image) | → STUCK immediately. `capturePage()` can see it, but nothing is addressable by ref, and coordinate clicking is deliberately not implemented (§8.2). Logged to `runs/` with the domain so the real frequency becomes measurable |
 
 **STUCK ≠ FAILED.** FAILED means *"this objective is unachievable, move on."* STUCK means *"I need
 you."* On STUCK, Clippy freezes the browser exactly where it is, enters the `stuck` state, and offers
@@ -315,6 +341,9 @@ probably present, while stuck means the run has been frozen for an unknown durat
 
 - **Click clip** → input expands. **⌥Space** → summon and focus from anywhere.
 - **Drag** anywhere on the clip; position persists across launches.
+- **"Look at this page"** button in the panel → forces `capturePage()` (§8.2) on the current page and
+  feeds screenshot plus tree into the next `ActBrain` decision. Available whenever a run is active;
+  the manual escape hatch for when Clippy is visibly misreading a form.
 - **⌥⇧Esc** → panic abort (§7.2).
 
 ### 9.4 Click-through
@@ -417,7 +446,7 @@ The module boundaries in §6.1 were chosen largely to make this possible.
 | Layer | Approach |
 |---|---|
 | `orchestrator/` | `brains/` mocked; scripted decisions, zero network. Every branch of the failure taxonomy (§8.4) becomes a deterministic unit test |
-| `hands/browser` | Real Greenhouse / Workday / Lever pages captured to disk once, then replayed. Tests the tree reader and ref-generation logic without network calls or burning real applications |
+| `hands/browser` | Real Greenhouse / Workday / Lever pages captured to disk once as **tree + screenshot pairs**, then replayed. Tests the tree reader, ref-generation, and `capturePage()` framing without network calls or burning real applications |
 | `trust.isGated()` | Pure function, exhaustively unit tested. **100% branch coverage** — this is the safety boundary |
 | §7.4 validator | Pure function; table-driven tests including adversarial cases (invented employer, shifted date, plausible-but-absent title) |
 | End-to-end | One recorded posting replayed as a smoke test |
@@ -429,6 +458,7 @@ The module boundaries in §6.1 were chosen largely to make this possible.
 | ATS bot detection blocks automation despite the real profile | Human-paced actions; STUCK on detection rather than evasion. If systemic, it invalidates the task choice — discover this early |
 | Act loop can't reliably complete a 40-step form | This is the question v1 exists to answer. A negative result is a valid outcome |
 | Cost per application exceeds usefulness | Compaction (§8.3) and caching (§6.3) are the levers; measure from run one |
+| `capturePage()` overused, blowing the per-objective budget | Screenshots are evicted from history after one turn (§8.3) and downscaled before send. If `ActBrain` reaches for it every step, that is a prompting problem — cap auto-triggered captures per objective and surface the count in the panel |
 | Jenova latency on knowledge turns makes runs feel slow | Knowledge turns are off the hot path; overlap them with browser work where possible |
 | Submitting a bad application to a real employer | §7.1 gate, §7.4 validator, §9.5 provenance diff. Three independent layers |
 
