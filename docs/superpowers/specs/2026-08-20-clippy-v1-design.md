@@ -47,6 +47,7 @@ Single user (the author), on their own machine, with their own Jenova API key. C
 | Browser control | Chrome DevTools Protocol against a **dedicated Chrome profile**, logged into job sites only | Job boards sit behind auth, so the profile must be real and logged-in; a clean automated profile hits login walls immediately and trips ATS bot detection. A dedicated profile satisfies that while keeping email and banking out of reach |
 | Act-loop model | Claude via `@anthropic-ai/sdk` | Native tool-calling; see §6.3 |
 | Knowledge model | Jenova Agent API | Multi-model routing, managed memory, RAG; see §6.3 |
+| Document reading | `@firecrawl/anydoc` | Rust, in-process, no network; prebuilt `darwin-arm64` Node binding. See §6.4 |
 
 **Rejected:** Tauri (splits the codebase across Rust and TypeScript for a marginal binary-size win)
 and native Swift (best OS integration, worst browser tooling — wrong trade for a browser-centric v1).
@@ -72,6 +73,7 @@ Each of these is a real part of the product vision, explicitly deferred:
 | **Vector memory / RAG over user activity** | Nothing to embed yet, and retrieval built before you know what gets retrieved produces the wrong schema | Traces carry structured keys from run one; additive path documented in §10.1 |
 | **Native app control** (Word, Finder, Mail) | Requires macOS Accessibility APIs — an entire second control mechanism | `hands/` interface is tool-agnostic; browser is the first implementation, not the only possible one |
 | **Auto-created custom agents** | **Blocked externally** — see §5 | `KnowBrain` is the seam this would plug into |
+| **Bullet-quality scoring** (`llm-as-a-verifier`, best-of-N over drafted variants) | Unknown whether bullet quality is actually a problem. Costs a Python subprocess boundary, a third vendor for logprobs (`DEEPSEEK_API_KEY`, `deepseek-v4-flash` backend), and 3× drafting spend | §7.4 fixes the ordering it must slot into. **Trigger:** tailored bullets read as consistently mediocre across several applications in the §9.5 gate |
 | **Recipes / learned workflows** | Needs run history to learn from | Same JSONL corpus |
 | **Packaging, signing, multi-user, billing** | Prototype | — |
 
@@ -154,6 +156,34 @@ genuine judgment.
 
 Both sit behind one interface so either is swappable and both are mockable in tests.
 
+### 6.4 Document I/O
+
+Reading documents and writing them are separate problems with separate tools. Conflating them
+produces a tailored resume that an ATS parses as one run-on field.
+
+**Read — `@firecrawl/anydoc`.** Converts DOCX, PDF, PPTX, XLSX, ODF, RTF, EPUB, and CSV into a
+structured document model. Rust with a prebuilt `darwin-arm64` Node binding, in-process, no network,
+single-digit milliseconds.
+
+Use `toDocument()` rather than `toMarkdown()`: it returns the block model with headings, lists, and
+tables intact, which parses into employers / titles / dates far more reliably than re-parsing Markdown
+that has already flattened the structure.
+
+Consumers: populating `profile.json` from the user's real resume (§10), and job descriptions that
+arrive as PDF attachments rather than HTML.
+
+**Write — template surgery, not generation.** anydoc is one-way (`src/render/` targets Markdown only),
+and that is the correct constraint. The tailored resume must **not** be generated as a fresh document:
+
+- ATS parsers are brittle about column layouts, headers, and text boxes. A regenerated file can be
+  silently mangled into unusable garbage at the exact moment it matters.
+- Recruiters see formatting before they read a word, and the user's existing layout is a deliberate
+  artifact.
+
+Instead, the user's real `.docx` is the template and generation is **targeted text replacement in the
+OOXML** (docxtemplater, or direct XML manipulation), preserving every style. Only the text spans
+identified as tailorable change; everything else is byte-identical.
+
 ## 7. Trust model
 
 ### 7.1 Gating is mechanical, not prompted
@@ -191,6 +221,27 @@ date appearing in output must exist in `profile.json`. **Fails closed.**
 This is a validator, not a prompt instruction — same reasoning as §7.1. A shopping agent that
 hallucinates buys the wrong blender; a job agent that hallucinates puts a fabricated employer on a
 real application sent to a real company under the user's name.
+
+**Truth and quality are different questions.** This validator answers *"did it invent a fact?"* — a
+factual question with a right answer, checkable by string match, that fails closed. It does not answer
+*"is this bullet any good?"* — a judgment with no ground truth.
+
+Bullet quality is addressed by a deferred component (§4): `llm-as-a-verifier` doing best-of-N selection
+over drafted variants. The **ordering is not negotiable when it lands**:
+
+```
+KnowBrain drafts N variants
+      ↓
+§7.4 deterministic validator     ← hard gate, fails closed
+      ↓
+verifier.select(criteria=…)      ← ranks only what already passed
+      ↓
+best surviving variant
+```
+
+A learned scorer must never be the safety gate. Run the other way round — verifier first, filtering to
+"the best one" — a fabricated bullet that happens to score well passes straight through, and a
+guarantee has been traded for a probability.
 
 ### 7.5 Never attempted
 
@@ -383,9 +434,15 @@ field incorrectly flagged as generated.
 v1 memory is deliberately minimal. **No vector database** — there is nothing yet worth embedding, and
 building retrieval before knowing what gets retrieved produces the wrong schema.
 
-**`profile.json`** — hand-curated. Resume facts (employers, titles, dates, bullet source material),
-contact details, work authorization, salary expectations, standard application answers. The single
-source of factual truth for §7.4.
+**`profile.json`** — resume facts (employers, titles, dates, bullet source material), contact details,
+work authorization, salary expectations, standard application answers. The single source of factual
+truth for §7.4.
+
+Populated by running the user's real resume through `anydoc.toDocument()` (§6.4) and mapping the block
+model into fields, then **reviewed and corrected by hand**. Extraction is a starting point, not an
+authority: this file is what every factual claim in every application is checked against, so an
+extraction error propagates into real submissions. The path to the source document is retained, since
+it is also the template for the write path (§6.4).
 
 **`runs/*.jsonl`** — append-only, one file per run. Each line records a step: observation digest,
 action, provenance, result, cost, timestamp. Gates and their outcomes are recorded, as are aborts.
@@ -449,6 +506,7 @@ The module boundaries in §6.1 were chosen largely to make this possible.
 | `hands/browser` | Real Greenhouse / Workday / Lever pages captured to disk once as **tree + screenshot pairs**, then replayed. Tests the tree reader, ref-generation, and `capturePage()` framing without network calls or burning real applications |
 | `trust.isGated()` | Pure function, exhaustively unit tested. **100% branch coverage** — this is the safety boundary |
 | §7.4 validator | Pure function; table-driven tests including adversarial cases (invented employer, shifted date, plausible-but-absent title) |
+| Document I/O (§6.4) | Extraction tested against a real resume fixture, asserting employers/titles/dates land in the right fields. Template surgery asserts the output opens, and that every span outside the tailored text is byte-identical to the source |
 | End-to-end | One recorded posting replayed as a smoke test |
 
 ## 12. Risks
