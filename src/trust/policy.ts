@@ -1,18 +1,19 @@
-import { EFFECT_META, type Action } from "../hands/types.js";
+import { EFFECT_META, type Effect, type ElementFacts } from "../hands/types.js";
 
 /**
  * The safety boundary (spec §7.1).
  *
- * Returns true if `action` must not execute until a human has approved it.
+ * Returns true if `effect` must not execute until a human has approved it.
  *
- * MUST be a pure function of the action's static TOOL_META. Never consult a
- * model, the page, or run state here — a confused or prompt-injected model has
- * to be structurally unable to reach an ungated Submit.
+ * Pure. Never consults a model, the page, or run state. `facts` are derived from
+ * the RESOLVED DOM element by the page script — not supplied by the model — and
+ * can only ever ADD gating on top of the static table.
  *
- * TODO(author): implement. See Plan 1, Task 3 for the trade-offs.
+ * TODO(author): implement. See Plan 1a, Task A3 for the trade-offs.
  */
-export function isGated(action: Action): boolean {
+export function isGated(effect: Effect, facts?: ElementFacts): boolean {
   void EFFECT_META;
-  void action;
-  throw new Error("isGated not implemented — see docs/superpowers/plans, Task 3");
+  void effect;
+  void facts;
+  throw new Error("isGated not implemented — see docs/superpowers/plans, Plan 1a Task A3");
 }

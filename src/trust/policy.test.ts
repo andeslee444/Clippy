@@ -1,31 +1,37 @@
 import { describe, it, expect } from "vitest";
 import { isGated } from "./policy.js";
-import type { Action } from "../hands/types.js";
+import type { Effect } from "../hands/types.js";
 
-const act = (a: Action) => a;
+const e = (x: Effect) => x;
 
 describe("isGated", () => {
-  it("gates submit — outward-facing and irreversible", () => {
-    expect(isGated(act({ kind: "submit", ref: "g1-r1" }))).toBe(true);
+  it("gates submit", () => {
+    expect(isGated(e({ kind: "submit", ref: "g1-r1" }))).toBe(true);
   });
 
-  it("does not gate observation", () => {
-    expect(isGated(act({ kind: "readPage" }))).toBe(false);
-    expect(isGated(act({ kind: "capturePage" }))).toBe(false);
+  it("gates upload — ATS platforms upload on attach", () => {
+    expect(isGated(e({ kind: "upload", ref: "g1-r1", path: "/x/cv.docx" }))).toBe(true);
   });
 
   it("does not gate ordinary form interaction", () => {
-    expect(isGated(act({ kind: "fill", ref: "g1-r2", value: "Andes" }))).toBe(false);
-    expect(isGated(act({ kind: "click", ref: "g1-r3" }))).toBe(false);
-    expect(isGated(act({ kind: "select", ref: "g1-r4", value: "Yes" }))).toBe(false);
+    expect(isGated(e({ kind: "fill", ref: "g1-r2", value: "Andes" }))).toBe(false);
+    expect(isGated(e({ kind: "select", ref: "g1-r4", value: "Yes" }))).toBe(false);
   });
 
   it("does not gate navigation", () => {
-    expect(isGated(act({ kind: "navigate", url: "https://boards.greenhouse.io/x" }))).toBe(false);
+    expect(isGated(e({ kind: "navigate", url: "https://boards.greenhouse.io/x" }))).toBe(false);
   });
 
-  it("is a pure function of the action kind", () => {
-    const a = act({ kind: "submit", ref: "g1-r1" });
+  it("does not gate a click on an ordinary control", () => {
+    expect(isGated(e({ kind: "click", ref: "g1-r3" }), { submitCapable: false })).toBe(false);
+  });
+
+  it("GATES a click on a submit-capable element — the kind is model-supplied", () => {
+    expect(isGated(e({ kind: "click", ref: "g1-r3" }), { submitCapable: true })).toBe(true);
+  });
+
+  it("is pure", () => {
+    const a = e({ kind: "submit", ref: "g1-r1" });
     expect(isGated(a)).toBe(isGated(a));
   });
 });

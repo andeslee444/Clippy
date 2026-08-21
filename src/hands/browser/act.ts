@@ -1,5 +1,6 @@
-import type { Page } from "playwright-core";
-import type { Action, Ref } from "../types.js";
+import type { Locator, Page } from "playwright-core";
+import { parseEffect } from "../schema.js";
+import type { Effect, ElementFacts, Ref } from "../types.js";
 
 /**
  * The ref no longer exists on the page (spec §8.4).
@@ -15,40 +16,93 @@ export class StaleRefError extends Error {
   }
 }
 
-async function resolve(page: Page, ref: Ref) {
-  const locator = page.locator(`[data-clippy-ref="${ref}"]`);
-  if ((await locator.count()) === 0) throw new StaleRefError(ref);
-  return locator;
+/**
+ * A `click` was aimed at a control that submits a form (spec §7.1).
+ *
+ * Refused rather than silently upgraded to `submit`: coercion would hide the
+ * discrepancy, and a model that mislabels a submit is a signal worth surfacing.
+ */
+export class SubmitCapableError extends Error {
+  constructor(public readonly ref: Ref) {
+    super(`Refusing click on ${ref}: it submits a form. Use kind "submit", which gates.`);
+    this.name = "SubmitCapableError";
+  }
 }
 
-/** Execute one action. Throws StaleRefError BEFORE any side effect. */
-export async function performAction(page: Page, action: Action): Promise<void> {
-  switch (action.kind) {
-    case "navigate":
-      await page.goto(action.url, { waitUntil: "domcontentloaded" });
-      break;
+export interface Resolved {
+  locator: Locator;
+  facts: ElementFacts;
+}
+
+/**
+ * Resolve a ref to an element plus the facts derived from the DOM.
+ *
+ * `facts` comes from attributes the page script stamped — not from the model.
+ */
+export async function resolve(page: Page, ref: Ref): Promise<Resolved> {
+  const locator = page.locator(`[data-clippy-ref="${ref}"]`);
+  if ((await locator.count()) === 0) throw new StaleRefError(ref);
+  const submitCapable = (await locator.getAttribute("data-clippy-submit")) === "1";
+  return { locator, facts: { submitCapable } };
+}
+
+/**
+ * Execute one effect. Validates input, then throws BEFORE any side effect if the
+ * ref is stale or the element disagrees with the declared kind.
+ */
+export async function performEffect(page: Page, raw: Effect): Promise<void> {
+  const effect = parseEffect(raw);
+
+  if (effect.kind === "navigate") {
+    await page.goto(effect.url, { waitUntil: "domcontentloaded" });
+    await settle(page);
+    return;
+  }
+
+  const { locator, facts } = await resolve(page, effect.ref);
+
+  if (effect.kind === "click" && facts.submitCapable) throw new SubmitCapableError(effect.ref);
+
+  switch (effect.kind) {
     case "click":
     case "submit":
-      await (await resolve(page, action.ref)).click();
+      await locator.click();
       break;
     case "fill":
-      await (await resolve(page, action.ref)).fill(action.value);
+      await locator.fill(effect.value);
       break;
     case "select":
-      await (await resolve(page, action.ref)).selectOption(action.value);
+      await locator.selectOption(effect.value);
       break;
     case "upload":
-      await (await resolve(page, action.ref)).setInputFiles(action.path);
+      await locator.setInputFiles(effect.path);
       break;
-    case "readPage":
-    case "capturePage":
-      throw new Error(`${action.kind} is an observation — call it directly, not via performAction`);
   }
   await settle(page);
 }
 
-/** Wait for the page to stop moving before the next snapshot (spec §8.4). */
-export async function settle(page: Page): Promise<void> {
-  await page.waitForLoadState("domcontentloaded").catch(() => {});
-  await page.waitForLoadState("networkidle").catch(() => {});
+export interface SettleResult {
+  settled: boolean;
+  reason?: string;
+}
+
+/**
+ * Wait for the page to stop moving before the next snapshot (spec §8.4).
+ *
+ * `networkidle` is bounded: on an ATS with analytics beacons or a websocket it
+ * never fires, and an unbounded wait would burn the full 30s default on every
+ * action while silently pretending it settled.
+ */
+export async function settle(page: Page): Promise<SettleResult> {
+  try {
+    await page.waitForLoadState("domcontentloaded", { timeout: 5_000 });
+  } catch {
+    return { settled: false, reason: "domcontentloaded timed out or context was destroyed" };
+  }
+  try {
+    await page.waitForLoadState("networkidle", { timeout: 2_000 });
+    return { settled: true };
+  } catch {
+    return { settled: false, reason: "network still active after 2s" };
+  }
 }
