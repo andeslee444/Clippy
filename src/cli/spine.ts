@@ -6,7 +6,7 @@ import { performEffect, resolve } from "../hands/browser/act.js";
 import { capturePage } from "../hands/browser/capture.js";
 import { GatedExecutor } from "../hands/execute.js";
 import { AuditLog } from "../trust/audit.js";
-import type { Effect } from "../hands/types.js";
+import type { Action, Effect } from "../hands/types.js";
 
 const HELP = `
   read                 snapshot the page and print the ref'd tree
@@ -48,13 +48,16 @@ const executor = new GatedExecutor({
   },
 });
 
+/** What the executor is currently working on, so an abort names the right thing. */
+let inFlight: Action = { kind: "readPage" };
+
 let aborting = false;
 process.on("SIGINT", async () => {
   if (aborting) process.exit(130);
   aborting = true;
   // Log the abort BEFORE releasing the browser, for the same reason attempts are
   // logged before execution: the record has to survive the thing it describes.
-  const seq = await audit.attempt({ kind: "readPage" }, { gated: false });
+  const seq = await audit.attempt(inFlight, { gated: false });
   await audit.outcome(seq, { ok: false, error: "aborted by user (SIGINT)" });
   console.log("\n⏹  aborted — releasing browser, Chrome stays up");
   await session.close();
@@ -72,6 +75,7 @@ for (;;) {
 
   try {
     if (cmd === "read") {
+      inFlight = { kind: "readPage" };
       const snap = await executor.observe({ kind: "readPage" }, () => readPage(session.page));
       console.log(renderSnapshot(snap));
       console.log(
@@ -81,6 +85,7 @@ for (;;) {
       continue;
     }
     if (cmd === "shot") {
+      inFlight = { kind: "capturePage" };
       const c = await executor.observe({ kind: "capturePage" }, () => capturePage(session.page));
       const { writeFile } = await import("node:fs/promises");
       await writeFile("/tmp/clippy-capture.png", Buffer.from(c.base64, "base64"));
@@ -97,6 +102,7 @@ for (;;) {
     : null;
 
     if (!effect) { console.log(HELP); continue; }
+    inFlight = effect;
     await executor.runEffect(effect);
     console.log("ok");
   } catch (err) {

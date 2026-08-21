@@ -25,13 +25,17 @@ export class GatedExecutor {
     const facts = await this.deps.resolveFacts(effect);
     const gated = isGated(effect, facts);
 
+    // Written BEFORE the approval prompt, not after. requestApproval() blocks on
+    // a human and can sit there indefinitely; a process killed at that prompt
+    // must still leave evidence that this effect was proposed. Auditing after
+    // approval would lose exactly the case §7.3 exists to record.
+    const seq = await this.deps.audit.attempt(effect, { gated });
+
     if (gated && !(await this.deps.requestApproval(effect, facts))) {
-      const seq = await this.deps.audit.attempt(effect, { gated });
       await this.deps.audit.outcome(seq, { ok: false, error: "approval denied" });
       throw new ApprovalDeniedError(effect);
     }
 
-    const seq = await this.deps.audit.attempt(effect, { gated });
     try {
       await this.deps.perform(effect);
       await this.deps.audit.outcome(seq, { ok: true });

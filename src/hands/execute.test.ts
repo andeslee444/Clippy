@@ -171,4 +171,44 @@ describe("GatedExecutor.observe", () => {
     ).rejects.toThrow("nope");
     expect(outcome).toHaveBeenCalledWith(1, { ok: false, error: "nope" });
   });
+
+  it("writes the audit attempt BEFORE asking for approval", async () => {
+    // requestApproval blocks on a human indefinitely. If the process is killed
+    // at that prompt, the log must still show the effect was proposed.
+    const order: string[] = [];
+    const audit = {
+      attempt: vi.fn(async () => { order.push("audit"); return 1; }),
+      outcome: vi.fn(async () => { order.push("outcome"); }),
+    } as any;
+    const ex = new GatedExecutor({
+      audit,
+      resolveFacts: async () => undefined,
+      perform: async () => { order.push("perform"); },
+      requestApproval: async () => { order.push("approval"); return true; },
+    });
+
+    await ex.runEffect({ kind: "submit", ref: "g1-r1" });
+    expect(order).toEqual(["audit", "approval", "perform", "outcome"]);
+  });
+
+  it("records a denied gated effect against the same attempt line", async () => {
+    const order: string[] = [];
+    const audit = {
+      attempt: vi.fn(async () => { order.push("audit"); return 7; }),
+      outcome: vi.fn(async () => { order.push("outcome"); }),
+    } as any;
+    const ex = new GatedExecutor({
+      audit,
+      resolveFacts: async () => undefined,
+      perform: async () => { order.push("perform"); },
+      requestApproval: async () => false,
+    });
+
+    await expect(ex.runEffect({ kind: "submit", ref: "g1-r1" })).rejects.toBeInstanceOf(
+      ApprovalDeniedError,
+    );
+    // Exactly one attempt, and it precedes the outcome. No orphaned second line.
+    expect(order).toEqual(["audit", "outcome"]);
+    expect(audit.outcome).toHaveBeenCalledWith(7, { ok: false, error: "approval denied" });
+  });
 });
