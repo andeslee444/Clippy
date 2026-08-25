@@ -82,8 +82,28 @@ export function checkIntegrity(
    * check quietly turns fail-open. Narrow beats lenient.
    */
   alsoKnown: string[] = [],
+  /**
+   * The job posting's own text.
+   *
+   * There are TWO kinds of claim here with two different sources of truth, and
+   * conflating them is what made this check reject good writing twice:
+   *
+   *   - Claims about the CANDIDATE — employers, titles, dates, metrics — must
+   *     be verifiable against the profile. Fabricating these is the thing §7.4
+   *     exists to stop.
+   *   - Claims about the EMPLOYER or the ROLE — team names, products,
+   *     technologies — are verifiable against the posting. "I am drawn to the
+   *     Core Ledger team's event store" is a true sentence about a real team,
+   *     and it will never appear in the candidate's profile.
+   *
+   * This is a rule, not an exemption. A company named in neither source is
+   * still rejected, which is what keeps the check fail-closed while two
+   * accumulated special cases would not have.
+   */
+  posting = "",
 ): IntegrityResult {
   const known = alsoKnown.map((k) => k.toLowerCase());
+  const postingText = posting.toLowerCase();
   const violations: Violation[] = [];
 
   for (const year of text.match(YEAR) ?? []) {
@@ -118,6 +138,7 @@ export function checkIntegrity(
 
     const recognised =
       known.some((k) => lower === k || lower.includes(k) || k.includes(lower)) ||
+      (postingText !== "" && postingText.includes(lower)) ||
       facts.organisations.some((o) => o === lower || lower.includes(o) || o.includes(lower)) ||
       facts.titles.some((t) => t === lower || lower.includes(t) || t.includes(lower)) ||
       facts.corpus.includes(lower);

@@ -40,7 +40,10 @@ export async function draftTailored(
     const answer = await brain.ask("draft", `${posting}${correction}`);
     cost += answer.cost;
 
-    const verdict = checkIntegrity(answer.text, facts);
+    // The posting is the second source of truth: claims about the employer or
+    // the role are checked against it, claims about the candidate against the
+    // profile. Without it, every genuinely tailored sentence is rejected.
+    const verdict = checkIntegrity(answer.text, facts, [], posting);
     if (verdict.ok) return { ok: true, text: answer.text, cost, violations: [] };
 
     last = verdict.violations.map((v) => `${v.kind} "${v.value}"`);

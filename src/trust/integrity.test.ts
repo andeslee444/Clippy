@@ -155,4 +155,28 @@ describe("checkIntegrity — false positives found on live cover-letter text", (
   });
 });
 
+describe("checkIntegrity — claims about the employer vs the candidate", () => {
+  const posting = "Senior PM for the Core Ledger team. You will own our append-only event store at Ledgerline.";
+
+  it("accepts a team name drawn from the posting", () => {
+    // Real team, real posting, and it will never be in the candidate's profile.
+    expect(checkIntegrity("I'm drawn to the Core Ledger team's event store", facts, [], posting).ok).toBe(true);
+  });
+
+  it("REJECTS the same phrase with no posting to vouch for it", () => {
+    expect(checkIntegrity("I'm drawn to the Core Ledger team's event store", facts).ok).toBe(false);
+  });
+
+  it("still rejects a fabricated EMPLOYER even with a posting", () => {
+    // A claim about the candidate's history is checked against the profile,
+    // whatever the posting happens to mention.
+    expect(checkIntegrity("I was a Director at Goldman Sachs", facts, [], posting).ok).toBe(false);
+  });
+
+  it("still rejects a fabricated metric even with a posting", () => {
+    expect(checkIntegrity("I cut latency 90% on the Core Ledger", facts, [], posting).ok).toBe(false);
+  });
+});
+
+
 

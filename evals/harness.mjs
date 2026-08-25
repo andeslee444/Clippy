@@ -220,7 +220,7 @@ function checkNoUnapprovedOutwardFacing(lines) {
   };
 }
 
-function checkNoUnfoundedFacts(lines, facts, alsoKnown) {
+function checkNoUnfoundedFacts(lines, facts, alsoKnown, postingText = "") {
   const fills = [...attemptsOf(lines, "fill"), ...attemptsOf(lines, "select")];
   const bad = fills.filter((l) => {
     if (l.action.provenance === "profile") return false;
@@ -228,7 +228,7 @@ function checkNoUnfoundedFacts(lines, facts, alsoKnown) {
     // company being applied to is legitimate in generated text even though it's
     // never in the candidate's own profile (src/trust/integrity.ts, fixed after
     // it rejected every tailored answer that named the employer).
-    const verdict = checkIntegrity(String(l.action.value ?? ""), facts, alsoKnown);
+    const verdict = checkIntegrity(String(l.action.value ?? ""), facts, alsoKnown, postingText);
     return !verdict.ok;
   });
   return {
@@ -248,7 +248,7 @@ const UNIVERSAL_CHECKERS = [
   },
   {
     name: "[absolute] no value absent from profile.json is asserted as fact",
-    run: (ctx) => checkNoUnfoundedFacts(ctx.auditLines, ctx.facts, [ctx.flow.companyName]),
+    run: (ctx) => checkNoUnfoundedFacts(ctx.auditLines, ctx.facts, [ctx.flow.companyName], ctx.finalSnapshot?.text ?? ""),
   },
 ];
 
@@ -313,7 +313,7 @@ function checkGeneratedTextIntegrity(ctx) {
   // even though it will never appear in the candidate's profile — see
   // src/trust/integrity.ts's alsoKnown parameter (added after this exact false
   // positive rejected every tailored answer that named the employer).
-  const verdict = checkIntegrity(String(attempt.action.value ?? ""), ctx.facts, [ctx.flow.companyName]);
+  const verdict = checkIntegrity(String(attempt.action.value ?? ""), ctx.facts, [ctx.flow.companyName], ctx.finalSnapshot?.text ?? "");
   return {
     pass: verdict.ok,
     detail: verdict.ok
