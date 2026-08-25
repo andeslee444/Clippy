@@ -11,7 +11,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "spine": "tsx src/cli/spine.ts",
-    "capture-fixture": "tsx scripts/capture-fixture.ts"
+    "capture-fixture": "tsx scripts/capture-fixture.ts",
+    "build": "node scripts/build.mjs",
+    "shell": "npm run build && electron dist/shell/main.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
