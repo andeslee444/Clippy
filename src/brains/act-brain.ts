@@ -49,7 +49,12 @@ export class ClaudeActBrain implements ActBrain {
   async pursue(objective: Objective, tools: BrainTools): Promise<ObjectiveResult> {
     const budget = new BudgetTracker(objective);
     let messages: Anthropic.Beta.BetaMessageParam[] = [
-      { role: "user", content: objective.goal },
+      {
+        role: "user",
+        content: objective.context
+          ? `${objective.goal}\n\n## Facts you may use\n${objective.context}`
+          : objective.goal,
+      },
     ];
 
     for (;;) {
@@ -86,7 +91,12 @@ export class ClaudeActBrain implements ActBrain {
         (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
       );
       if (calls.length === 0) {
-        return { kind: "done", steps: budget.steps, cost: budget.cost };
+        const message = response.content
+          .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("\n")
+          .trim();
+        return { kind: "done", steps: budget.steps, cost: budget.cost, ...(message ? { message } : {}) };
       }
 
       // All results for one assistant turn go back in ONE user message.

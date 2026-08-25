@@ -15,6 +15,7 @@ import type { ActBrain } from "../brains/types.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 import { ingestResume, draftToProfile } from "../hands/resume/ingest.js";
 import { loadProfile, saveProfile, factsOf, type Profile } from "../memory/profile.js";
+import { renderProfileForModel } from "../memory/render.js";
 import { JenovaKnowBrain } from "../brains/know-brain.js";
 import { draftTailored } from "../brains/draft.js";
 
@@ -247,7 +248,12 @@ for (;;) {
             ? new ClaudeActBrain()
             : OpenAICompatBrain.fromEnv();
       steps.length = 0;
-      const result = await brain.pursue({ ...DEFAULT_OBJECTIVE, goal }, brainTools);
+      const loaded = await requireProfile();
+      const result = await brain.pursue(
+        { ...DEFAULT_OBJECTIVE, goal, ...(loaded ? { context: renderProfileForModel(loaded) } : {}) },
+        brainTools,
+      );
+      if ("message" in result && result.message) console.log(`\n${result.message}`);
       console.log(
         `\n${result.kind.toUpperCase()} — ${result.steps} steps, $${result.cost.toFixed(4)}` +
           ("reason" in result ? `\n  ${result.reason}` : ""),

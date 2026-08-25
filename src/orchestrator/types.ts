@@ -3,6 +3,15 @@ import type { Action } from "../hands/types.js";
 export interface Objective {
   /** What the user asked for, in words. */
   goal: string;
+  /**
+   * Facts the model may use, rendered as text — normally the user's profile.
+   *
+   * Without this the system prompt's "fill only fields you have been given
+   * values for" is trivially satisfied by doing nothing, which is exactly what
+   * happened on a live Discord posting: 24 fields present, zero filled, run
+   * reported done. The model was obeying instructions it had no way to act on.
+   */
+  context?: string;
   /** Hard ceiling on chargeable steps (spec §8.1). */
   maxSteps: number;
   /** Hard ceiling on spend, USD. */
@@ -32,7 +41,13 @@ export type StepOutcome =
  * browser is frozen where it is; FAILED means "this is unachievable, move on".
  */
 export type ObjectiveResult =
-  | { kind: "done"; steps: number; cost: number }
+  /**
+   * `message` is the model's closing text. For an acting run it is a summary;
+   * for a triage run ("is this worth applying to?") it is the ENTIRE product —
+   * discarding it made a working flow indistinguishable from one that did
+   * nothing, since both reported done with 0 steps.
+   */
+  | { kind: "done"; steps: number; cost: number; message?: string }
   | { kind: "stuck"; reason: string; steps: number; cost: number }
   | { kind: "failed"; reason: string; steps: number; cost: number };
 

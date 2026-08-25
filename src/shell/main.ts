@@ -12,6 +12,7 @@ import { ClaudeActBrain } from "../brains/act-brain.js";
 import { OpenAICompatBrain } from "../brains/openai-brain.js";
 import { buildGateView } from "./gate-view.js";
 import { loadProfile, factsOf } from "../memory/profile.js";
+import { renderProfileForModel } from "../memory/render.js";
 import { checkIntegrity, explain } from "../trust/integrity.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 import type { ActBrain } from "../brains/types.js";
@@ -112,9 +113,9 @@ async function main(): Promise<void> {
 
   // Optional: without it the gate honestly reports every value as `unknown`
   // rather than pretending it verified anything.
-  const facts = await loadProfile(join(process.cwd(), "profile.json"))
-    .then(factsOf)
-    .catch(() => undefined);
+  const profile = await loadProfile(join(process.cwd(), "profile.json")).catch(() => null);
+  const facts = profile ? factsOf(profile) : undefined;
+  const context = profile ? renderProfileForModel(profile) : undefined;
 
   const tools = makeTools({
     facts,
@@ -136,7 +137,7 @@ async function main(): Promise<void> {
         ? new ClaudeActBrain()
         : OpenAICompatBrain.fromEnv();
     try {
-      const result = await brain.pursue({ ...DEFAULT_OBJECTIVE, goal }, tools);
+      const result = await brain.pursue({ ...DEFAULT_OBJECTIVE, goal, ...(context ? { context } : {}) }, tools);
       win?.webContents.send("clippy:state", {
         state: result.kind === "done" ? "done" : "stuck",
         message: "reason" in result ? result.reason : undefined,

@@ -169,7 +169,12 @@ export class OpenAICompatBrain implements ActBrain {
     const budget = new BudgetTracker(objective);
     let messages: Msg[] = [
       { role: "system", content: SYSTEM },
-      { role: "user", content: objective.goal },
+      {
+        role: "user",
+        content: objective.context
+          ? `${objective.goal}\n\n## Facts you may use\n${objective.context}`
+          : objective.goal,
+      },
     ];
 
     for (;;) {
@@ -196,7 +201,8 @@ export class OpenAICompatBrain implements ActBrain {
 
       const calls = choice.message.tool_calls ?? [];
       if (calls.length === 0) {
-        return { kind: "done", steps: budget.steps, cost: budget.cost };
+        const message = (choice.message.content ?? "").trim();
+        return { kind: "done", steps: budget.steps, cost: budget.cost, ...(message ? { message } : {}) };
       }
 
       // One `role:"tool"` message PER call — unlike Anthropic, where every result
