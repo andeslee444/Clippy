@@ -216,12 +216,37 @@ window.clippy.onGate(({ effect, view }) => {
     for (const item of group.items) {
       const el = document.createElement("div");
       el.className = "item";
+
       const field = document.createElement("span");
       field.className = "field";
       field.textContent = item.field;
-      const value = document.createElement("span");
-      value.textContent = item.value;
-      el.append(field, value);
+
+      // Expanded groups are the ones a human is being asked to vet, so their
+      // values are editable in place (§9.5). Editing re-fills the field and
+      // promotes it to `human` — once you have written it, it is no longer
+      // something a model asserted.
+      const value = document.createElement(group.expanded ? "textarea" : "span");
+      if (group.expanded) {
+        value.className = "edit";
+        value.value = item.value;
+        value.rows = Math.min(4, Math.ceil(item.value.length / 46));
+        value.addEventListener("change", async () => {
+          const result = await window.clippy.edit(item.ref, value.value);
+          warn.textContent = result.warning ?? "";
+          warn.hidden = !result.warning;
+          el.classList.add("edited");
+        });
+      } else {
+        value.textContent = item.value;
+      }
+
+      // A failing check WARNS, it does not block. §7.4 exists to stop a model
+      // inventing facts about you, not to overrule you about your own history.
+      const warn = document.createElement("div");
+      warn.className = "warn-line";
+      warn.hidden = true;
+
+      el.append(field, value, warn);
       body.append(el);
     }
 

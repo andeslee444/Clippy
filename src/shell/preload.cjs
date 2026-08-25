@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("clippy", {
   run: (goal) => ipcRenderer.invoke("clippy:run", goal),
   look: () => ipcRenderer.invoke("clippy:look"),
+  edit: (ref, value) => ipcRenderer.invoke("clippy:edit", { ref, value }),
   answerGate: (approved) => ipcRenderer.send("clippy:gate-answer", approved),
   pointerOver: (over) => ipcRenderer.send("clippy:pointer-over", over),
   resize: (open) => ipcRenderer.invoke("clippy:resize", open),

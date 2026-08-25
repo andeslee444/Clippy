@@ -1,10 +1,18 @@
 import { classify } from "../orchestrator/classify.js";
+import { provenanceOf } from "./provenance.js";
+import type { ProfileFacts } from "../memory/profile.js";
 import type { StepRecord } from "../orchestrator/types.js";
 import type { Effect } from "../hands/types.js";
 import type { BrainTools } from "./types.js";
 
 export interface ToolDeps {
   runEffect: (effect: Effect) => Promise<void>;
+  /**
+   * The profile, if one is loaded. Used to DERIVE each value's provenance for
+   * the §9.5 gate — never asked of the model, which could be wrong about it.
+   * Absent means every value shows as `unknown`, which is the honest default.
+   */
+  facts?: ProfileFacts;
   readPage: () => Promise<string>;
   capturePage: () => Promise<{ base64: string }>;
   onStep: (record: StepRecord) => void;
@@ -27,7 +35,21 @@ export function makeTools(deps: ToolDeps): BrainTools {
     readPage: deps.readPage,
     capturePage: deps.capturePage,
 
-    async perform(effect: Effect): Promise<string> {
+    async perform(raw: Effect): Promise<string> {
+      // Stamp provenance BEFORE executing, so the record the gate reads is the
+      // record of what actually ran.
+      // A declared `human` provenance is preserved; anything else is ignored and
+      // re-derived. That asymmetry is the point: a person typing a value IS the
+      // authority on where it came from, while a model asserting its own output
+      // is trustworthy is exactly the hole §7.1 closed. There is no code path by
+      // which a model can mark its own text as `profile`.
+      const effect: Effect =
+        (raw.kind === "fill" || raw.kind === "select") && deps.facts
+          ? {
+              ...raw,
+              provenance: raw.provenance === "human" ? "human" : provenanceOf(raw.value, deps.facts),
+            }
+          : raw;
       try {
         await deps.runEffect(effect);
         const effectText = `${effect.kind} ok`;

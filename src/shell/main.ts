@@ -11,6 +11,8 @@ import { makeTools } from "../brains/tools.js";
 import { ClaudeActBrain } from "../brains/act-brain.js";
 import { OpenAICompatBrain } from "../brains/openai-brain.js";
 import { buildGateView } from "./gate-view.js";
+import { loadProfile, factsOf } from "../memory/profile.js";
+import { checkIntegrity, explain } from "../trust/integrity.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 import type { ActBrain } from "../brains/types.js";
 import type { Effect } from "../hands/types.js";
@@ -108,7 +110,14 @@ async function main(): Promise<void> {
     requestApproval,
   });
 
+  // Optional: without it the gate honestly reports every value as `unknown`
+  // rather than pretending it verified anything.
+  const facts = await loadProfile(join(process.cwd(), "profile.json"))
+    .then(factsOf)
+    .catch(() => undefined);
+
   const tools = makeTools({
+    facts,
     runEffect: (e) => executor.runEffect(e),
     readPage: async () =>
       renderSnapshot(await executor.observe({ kind: "readPage" }, () => readPage(session.page))),
@@ -138,6 +147,21 @@ async function main(): Promise<void> {
       win?.webContents.send("clippy:state", { state: "stuck", message });
       return { kind: "failed", reason: message, steps: 0, cost: 0 };
     }
+  });
+
+  /**
+   * Edit a value at the gate (spec §9.5).
+   *
+   * Re-fills the field, promotes provenance to `human`, and re-runs the §7.4
+   * check. A failing check WARNS rather than blocks: that validator exists to
+   * stop a model inventing facts about the user, not to overrule the user about
+   * their own application. They are the authority on their own history.
+   */
+  ipcMain.handle("clippy:edit", async (_e, { ref, value }: { ref: string; value: string }) => {
+    await executor.runEffect({ kind: "fill", ref, value, provenance: "human" });
+    if (!facts) return { ok: true, warning: null };
+    const verdict = checkIntegrity(value, facts);
+    return { ok: verdict.ok, warning: verdict.ok ? null : explain(verdict) };
   });
 
   ipcMain.handle("clippy:look", () =>

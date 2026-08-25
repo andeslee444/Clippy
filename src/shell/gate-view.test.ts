@@ -63,3 +63,25 @@ describe("buildGateView", () => {
     expect(v.needsReview).toBe(1);
   });
 });
+
+describe("buildGateView — edit support", () => {
+  it("carries the ref so an edit can re-fill that exact element", () => {
+    const v = buildGateView([filled("Why this role?", "text", "generated")]);
+    expect(v.groups[0]!.items[0]!.ref).toBe("g1-r1");
+  });
+
+  it("marks human-edited values as their own group, ahead of profile", () => {
+    const v = buildGateView([
+      filled("Name", "Andes", "profile"),
+      filled("Why this role?", "I rewrote this myself", "human"),
+    ]);
+    expect(v.groups.map((g) => g.provenance)).toEqual(["human", "profile"]);
+  });
+
+  it("does not ask for review of a value the human wrote", () => {
+    // They just wrote it. Asking them to vet their own sentence is noise.
+    const v = buildGateView([filled("Why this role?", "mine", "human")]);
+    expect(v.needsReview).toBe(0);
+  });
+});
+

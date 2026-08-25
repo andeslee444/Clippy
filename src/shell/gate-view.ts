@@ -6,6 +6,8 @@ export type GateProvenance = Provenance | "unknown";
 export interface GateItem {
   field: string;
   value: string;
+  /** Needed so an edit at the gate can re-fill this exact element (§9.5). */
+  ref: string;
 }
 
 export interface GateGroup {
@@ -50,7 +52,7 @@ export function buildGateView(steps: StepRecord[]): GateView {
     // been shown to come from anywhere trustworthy.
     const p: GateProvenance = a.provenance ?? "unknown";
     const list = buckets.get(p) ?? [];
-    list.push({ field: step.effect, value: a.value });
+    list.push({ field: step.effect, value: a.value, ref: a.ref });
     buckets.set(p, list);
   }
 

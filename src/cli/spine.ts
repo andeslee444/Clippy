@@ -109,6 +109,7 @@ async function currentPosting(): Promise<string> {
 
 const steps: StepRecord[] = [];
 const brainTools = makeTools({
+  facts: await loadProfile(PROFILE_PATH).then(factsOf).catch(() => undefined),
   runEffect: (effect) => executor.runEffect(effect),
   readPage: async () => {
     inFlight = { kind: "readPage" };
