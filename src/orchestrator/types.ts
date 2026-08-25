@@ -12,6 +12,16 @@ export interface Objective {
    * reported done. The model was obeying instructions it had no way to act on.
    */
   context?: string;
+  /**
+   * Offer only observation tools — no fill, click, select, or submit.
+   *
+   * For "is this worth applying to?", where acting is not just unnecessary but
+   * harmful: a stray click navigates off the posting and the model has no
+   * `navigate` tool to get back, so it strands itself. Asking politely in the
+   * prompt is not enough — §7.1 established that instructions are advisory. A
+   * tool absent from the schema cannot be called however the model is feeling.
+   */
+  readOnly?: boolean;
   /** Hard ceiling on chargeable steps (spec §8.1). */
   maxSteps: number;
   /** Hard ceiling on spend, USD. */

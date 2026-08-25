@@ -22,8 +22,22 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   { name: "fill", description: "Type a value into a text field, by ref.", input_schema: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref", "value"], additionalProperties: false } },
   { name: "select", description: "Choose an option in a dropdown, by ref.", input_schema: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref", "value"], additionalProperties: false } },
   { name: "click", description: "Click a non-submitting element, by ref. Refused for anything that submits a form.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
+  {
+    name: "need_human",
+    description:
+      "Stop and hand back to the person. Use for a login wall, a CAPTCHA, or anything you cannot do without them. Say what is blocking you.",
+    input_schema: {
+      type: "object",
+      properties: { reason: { type: "string" } },
+      required: ["reason"],
+      additionalProperties: false,
+    },
+  },
   { name: "submit", description: "Submit the form. Always asks the human for approval first, and may be declined.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
 ];
+
+/** Sentinel the dispatcher returns so the loop can end the run as stuck. */
+export const NEED_HUMAN = "__CLIPPY_NEED_HUMAN__";
 
 const RefArg = z.object({ ref: z.string() });
 const ValueArg = z.object({ ref: z.string(), value: z.string() });
@@ -72,7 +86,11 @@ export class ClaudeActBrain implements ActBrain {
         // Stable prefix — system + tools are resent every turn.
         cache_control: { type: "ephemeral" },
         system: SYSTEM,
-        tools: TOOLS,
+        // readOnly offers observation only — the acting tools are not in the
+        // schema at all, so they cannot be called.
+        tools: objective.readOnly
+          ? TOOLS.filter((t) => t.name === "read_page" || t.name === "need_human")
+          : TOOLS,
         messages,
       });
 
@@ -118,6 +136,16 @@ export class ClaudeActBrain implements ActBrain {
       // however much work it did. `record` skips stale-ref retries (§8.4).
       for (const step of tools.steps.slice(before)) budget.record(step.outcome);
 
+      // A model that recognises it is blocked can now SAY so structurally.
+      // Previously it could only explain in prose, which always produced
+      // `done` — so "there is a login wall, I need you" was indistinguishable
+      // from "finished successfully".
+      const blocked = calls.find((c) => c.name === "need_human");
+      if (blocked) {
+        const reason = String((blocked.input as { reason?: string }).reason ?? "needs a human");
+        return { kind: "stuck", reason, steps: budget.steps, cost: budget.cost };
+      }
+
       const declined = tools.steps.find((s) => s.outcome.kind === "stuck");
       if (declined && declined.outcome.kind === "stuck") {
         return { kind: "stuck", reason: declined.outcome.reason, steps: budget.steps, cost: budget.cost };
@@ -133,6 +161,9 @@ export class ClaudeActBrain implements ActBrain {
       switch (call.name) {
         case "read_page":
           return await tools.readPage();
+        case "need_human":
+          // Handled by the loop, which turns it into a stuck result.
+          return NEED_HUMAN;
         case "fill": {
           const { ref, value } = ValueArg.parse(call.input);
           return await tools.perform({ kind: "fill", ref, value });

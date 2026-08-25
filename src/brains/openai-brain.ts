@@ -100,6 +100,20 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "need_human",
+      description:
+        "Stop and hand back to the person. Use for a login wall, a CAPTCHA, or anything you cannot do without them. Say what is blocking you.",
+      parameters: {
+        type: "object",
+        properties: { reason: { type: "string" } },
+        required: ["reason"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "submit",
       description:
         "Submit the form. Always asks the human for approval first, and may be declined.",
@@ -112,6 +126,19 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
     },
   },
 ];
+
+/** Sentinel the dispatcher returns so the loop can end the run as stuck. */
+export const NEED_HUMAN = "__CLIPPY_NEED_HUMAN__";
+
+/**
+ * The observation-only subset (spec: Objective.readOnly).
+ *
+ * `ChatCompletionTool` is a union of function and custom tools, so the narrowing
+ * happens once here rather than at the call site.
+ */
+const OBSERVE_ONLY: OpenAI.Chat.ChatCompletionTool[] = TOOLS.filter(
+  (t) => t.type === "function" && (t.function.name === "read_page" || t.function.name === "need_human"),
+);
 
 const RefArg = z.object({ ref: z.string() });
 const ValueArg = z.object({ ref: z.string(), value: z.string() });
@@ -186,7 +213,7 @@ export class OpenAICompatBrain implements ActBrain {
       const response = await this.client.chat.completions.create({
         model: this.provider.model,
         messages,
-        tools: TOOLS,
+        tools: objective.readOnly ? OBSERVE_ONLY : TOOLS,
         tool_choice: "auto",
       });
 
@@ -224,6 +251,17 @@ export class OpenAICompatBrain implements ActBrain {
       // Charge the step budget for what actually happened — see act-brain.ts.
       for (const step of tools.steps.slice(before)) budget.record(step.outcome);
 
+      const blocked = calls.find((c) => c.type === "function" && c.function.name === "need_human");
+      if (blocked && blocked.type === "function") {
+        let reason = "needs a human";
+        try {
+          reason = String(
+            (JSON.parse(blocked.function.arguments || "{}") as { reason?: string }).reason ?? reason,
+          );
+        } catch { /* keep the default */ }
+        return { kind: "stuck", reason, steps: budget.steps, cost: budget.cost };
+      }
+
       const declined = tools.steps.find((s) => s.outcome.kind === "stuck");
       if (declined && declined.outcome.kind === "stuck") {
         return { kind: "stuck", reason: declined.outcome.reason, steps: budget.steps, cost: budget.cost };
@@ -240,6 +278,8 @@ export class OpenAICompatBrain implements ActBrain {
       switch (name) {
         case "read_page":
           return await tools.readPage();
+        case "need_human":
+          return NEED_HUMAN;
         case "fill": {
           const { ref, value } = ValueArg.parse(args);
           return await tools.perform({ kind: "fill", ref, value });
