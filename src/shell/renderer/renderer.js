@@ -15,6 +15,9 @@ const gateGroups = /** @type {HTMLElement} */ (document.getElementById("gate-gro
 
 const STATES = ["idle", "listening", "thinking", "acting", "blocked", "stuck", "done"];
 
+/** Mirrors the window's ignore-mouse state in main. Must be kept in step with it. */
+let solid = false;
+
 function setState(state) {
   document.body.classList.remove(...STATES);
   document.body.classList.add(state);
@@ -31,8 +34,10 @@ function setState(state) {
  * the rendered shape, so the gaps inside the clip's bounding box pass through
  * too, not just the area outside it.
  */
-let solid = false;
 window.addEventListener("mousemove", (e) => {
+  // While the panel is open the window is solid by definition; continuing to
+  // toggle setIgnoreMouseEvents at element boundaries makes it strobe.
+  if (open) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const over = Boolean(el && el !== document.body && el !== document.documentElement);
   if (over !== solid) {
@@ -43,17 +48,41 @@ window.addEventListener("mousemove", (e) => {
 
 /* ── open / close ─────────────────────────────────────────────────────────── */
 let open = false;
-function setOpen(next) {
+/**
+ * Order matters and is the whole fix for the flicker.
+ *
+ * Opening: grow the window FIRST, and only then unhide the panel. Unhiding it
+ * first draws a 372px panel inside a 96px window for several frames — the panel
+ * appears clipped, then jumps, which reads as a flash.
+ *
+ * Closing: the reverse. Hide the panel, then shrink, so the panel is never
+ * being painted while the window is mid-resize.
+ */
+let busy = false;
+async function setOpen(next) {
+  if (busy || next === open) return; // ignore clicks during a transition
+  busy = true;
   open = next;
-  panel.hidden = !open;
-  // The window must resize BEFORE the panel can be seen: it is only 96px wide
-  // when idle, and a panel drawn outside those bounds is simply not rendered.
-  window.clippy.resize(open);
-  if (open) {
-    setState("listening");
-    goal.focus();
-  } else {
-    setState("idle");
+  try {
+    if (open) {
+      await window.clippy.resize(true);
+      panel.hidden = false;
+      solid = true;
+      setState("listening");
+      goal.focus();
+    } else {
+      panel.hidden = true;
+      await window.clippy.resize(false);
+      setState("idle");
+      // resize() ALSO sets the window's ignore-mouse state in main. Our local
+      // `solid` flag must follow it, or the two desync: `solid` stays true, the
+      // next hover over the clip computes over===solid, no pointerOver is sent,
+      // and the window stays click-through forever. Symptom is a clip that
+      // opens once and is then dead to clicks.
+      solid = false;
+    }
+  } finally {
+    busy = false;
   }
 }
 

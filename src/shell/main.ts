@@ -52,7 +52,10 @@ function createWindow(): BrowserWindow {
     w.setIgnoreMouseEvents(!over, { forward: true });
   });
 
-  ipcMain.on("clippy:resize", (_e, open: boolean) => {
+  // `handle`, not `on`: the renderer must be able to AWAIT the resize before it
+  // shows the panel. Showing it first draws a 372px panel inside a 96px window
+  // for several frames, which is the flicker.
+  ipcMain.handle("clippy:resize", (_e, open: boolean) => {
     const size = open ? OPEN : IDLE;
     const [x = 0, y = 0] = w.getPosition();
     const [w0 = 0, h0 = 0] = w.getSize();
@@ -60,7 +63,9 @@ function createWindow(): BrowserWindow {
     // bottom-right of the screen, so growing 96px -> 460px from a fixed top-left
     // pushes the whole window past the screen edge and the app appears to
     // vanish. Nothing errors; it is simply not where anyone is looking.
-    w.setBounds({ x: x + (w0 - size.width), y: y + (h0 - size.height), ...size }, true);
+    // animate:false — an animated bounds change on a transparent frameless
+    // window repaints the whole surface each frame and visibly strobes.
+    w.setBounds({ x: x + (w0 - size.width), y: y + (h0 - size.height), ...size }, false);
     w.setIgnoreMouseEvents(!open, { forward: true });
   });
 
