@@ -31,7 +31,7 @@ describe("compactMessages", () => {
     // tree, so that literal can never match and the assertion passes vacuously.
     // Verified by disabling compaction entirely — the old form still passed.
     expect(JSON.stringify(out)).not.toContain("g1-r0");
-    expect(JSON.stringify(out)).toContain("superseded");
+    expect(JSON.stringify(out)).toContain("omitted to save space");
   });
 
   it("preserves every tool_use_id — the API rejects an unmatched pair", () => {

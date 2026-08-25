@@ -5,7 +5,16 @@ type Msg = OpenAI.Chat.ChatCompletionMessageParam;
 /** Results longer than this are candidates for shrinking once superseded. */
 const BULKY = 400;
 
-export const SUPERSEDED = "[superseded page snapshot — call read_page for the current page]";
+/**
+ * Descriptive, never imperative.
+ *
+ * This previously read "call read_page for the current page" — and the model
+ * obeyed it. Each read made the prior snapshot stale, which produced another
+ * copy of the instruction, which produced another read: 60 read_page calls in
+ * one run. Text injected into a model's context is not inert data; a tool
+ * result carries the same imperative weight as the system prompt.
+ */
+export const SUPERSEDED = "[older page snapshot omitted to save space — the current page appears below]";
 
 /**
  * Shrink superseded page snapshots in place, Chat-Completions shape (spec §8.3).

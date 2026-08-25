@@ -53,7 +53,7 @@ export function compactMessages(messages: Msg[]): Msg[] {
       ...msg,
       content: msg.content.map((block, bi) =>
         hits.some(([, b]) => b === bi) && block.type === "tool_result"
-          ? { ...block, content: "[superseded page snapshot — call read_page for the current page]" }
+          ? { ...block, content: "[older page snapshot omitted to save space — the current page appears below]" }
           : block,
       ),
     };

@@ -753,9 +753,13 @@ async function runFlow(flow, { session, profile, facts }) {
   const brain = makeActBrain(process.env);
   const result = await brain.pursue(
     {
+      // Spread the flow's objective rather than listing its fields. The previous
+      // version enumerated goal/maxSteps/maxCost/context and silently dropped
+      // `readOnly` — so F3 ran with the full toolset and clicked, while the flow
+      // definition said otherwise. An explicit field list is a silent-drop
+      // hazard every time the type grows.
+      ...flow.objective,
       goal: flow.goal,
-      maxSteps: flow.objective.maxSteps,
-      maxCost: flow.objective.maxCost,
       context: renderProfileForModel(profile),
     },
     tools,

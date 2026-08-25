@@ -54,3 +54,26 @@ describe("BudgetTracker", () => {
     expect(b.exhausted()).toMatch(/re-render|stale/i);
   });
 });
+
+describe("BudgetTracker — observations", () => {
+  it("does not charge an observation against the step budget", () => {
+    const b = t();
+    for (let i = 0; i < 5; i++) b.observe();
+    expect(b.steps).toBe(0);
+  });
+
+  it("still stops a run that only ever reads", () => {
+    // Observations are free against `steps`, so a read-only run was bounded by
+    // nothing but cost: 60 read_page calls at 0 steps in one live run.
+    const b = t();
+    for (let i = 0; i < 20; i++) b.observe();
+    expect(b.exhausted()).toMatch(/without acting|nothing is changing/i);
+  });
+
+  it("lets a normal amount of reading through", () => {
+    const b = t();
+    for (let i = 0; i < 6; i++) b.observe();
+    expect(b.exhausted()).toBeNull();
+  });
+});
+

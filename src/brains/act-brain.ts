@@ -60,8 +60,12 @@ export class ClaudeActBrain implements ActBrain {
     this.client = client ?? new Anthropic();
   }
 
+  /** Set per run so #dispatch can charge observations against the budget. */
+  private onObserve?: () => void;
+
   async pursue(objective: Objective, tools: BrainTools): Promise<ObjectiveResult> {
     const budget = new BudgetTracker(objective);
+    this.onObserve = () => budget.observe();
     let messages: Anthropic.Beta.BetaMessageParam[] = [
       {
         role: "user",
@@ -160,6 +164,7 @@ export class ClaudeActBrain implements ActBrain {
     try {
       switch (call.name) {
         case "read_page":
+          this.onObserve?.();
           return await tools.readPage();
         case "need_human":
           // Handled by the loop, which turns it into a stuck result.
