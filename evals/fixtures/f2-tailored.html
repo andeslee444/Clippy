@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Senior Backend Engineer — Meridian Health | Careers</title>
+<style>
+  :root { --ink:#1b1f23; --muted:#5b6470; --line:#e3e6ea; --accent:#0b5fff; --bg:#fff; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); margin: 0; line-height: 1.55; }
+  header.site { display:flex; align-items:center; justify-content:space-between; padding: 16px 32px; border-bottom: 1px solid var(--line); }
+  header.site .brand { font-weight: 700; font-size: 18px; }
+  nav.site a { color: var(--muted); text-decoration: none; margin-left: 24px; font-size: 14px; }
+  nav.site a:hover { color: var(--ink); }
+  main { max-width: 780px; margin: 0 auto; padding: 32px; }
+  .posting-head h1 { font-size: 26px; margin: 0 0 4px; }
+  .posting-head .meta { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  .posting-head .meta a { color: var(--accent); }
+  section.description h2 { font-size: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 32px; }
+  section.description p, section.description li { font-size: 15px; }
+  form.application { margin-top: 40px; border-top: 2px solid var(--line); padding-top: 24px; }
+  form.application h2 { font-size: 20px; margin-bottom: 4px; }
+  .field { margin-bottom: 18px; }
+  .field label { display:block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field .hint { color: var(--muted); font-weight: 400; }
+  .field input[type=text], .field input[type=email], .field input[type=tel], .field input[type=url],
+  .field select, .field textarea { width:100%; padding: 9px 10px; border: 1px solid #c8ccd2; border-radius: 6px; font-size: 14px; font-family: inherit; }
+  .field textarea { min-height: 110px; resize: vertical; }
+  .row2 { display:flex; gap: 16px; }
+  .row2 .field { flex: 1; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 24px 0; }
+  fieldset legend { font-size: 13px; font-weight: 600; padding: 0 6px; }
+  .consent { display:flex; align-items:flex-start; gap: 8px; font-size: 13px; color: var(--muted); }
+  button.submit { background: var(--accent); color:#fff; border:0; padding: 12px 22px; border-radius: 6px; font-size: 15px; font-weight: 600; cursor:pointer; margin-top: 8px; }
+  footer.site { border-top: 1px solid var(--line); margin-top: 48px; padding: 24px 32px; color: var(--muted); font-size: 13px; }
+  footer.site a { color: var(--muted); margin-right: 16px; }
+  .required-note { background:#fff8e6; border:1px solid #f0d68a; border-radius:6px; padding:10px 12px; font-size:13px; margin-bottom:16px; }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="brand">Meridian Health</div>
+  <nav class="site">
+    <a href="/">Home</a>
+    <a href="/jobs">Jobs</a>
+    <a href="/about">About</a>
+    <a href="/contact">Contact</a>
+  </nav>
+</header>
+
+<main>
+  <div class="posting-head">
+    <h1>Senior Backend Engineer</h1>
+    <div class="meta">Meridian Health · Remote (US) · Full-time · <a href="#application-form">Apply below</a></div>
+  </div>
+
+  <section class="description">
+    <p>Meridian Health builds the claims-adjudication platform used by nineteen regional insurers to
+    process eligibility and benefits in real time. We are a 140-person engineering organization
+    spread across four time zones, and we ship weekly to a system that adjudicates roughly 4 million
+    claims a day. This role sits on the Core Ledger team, which owns the append-only event store
+    that every other service in the company reads from.</p>
+
+    <h2>About the role</h2>
+    <p>You'll design and operate services that sit directly in the critical path of claims processing.
+    Correctness and auditability matter more here than almost anywhere else in the stack: a bug in
+    ledger reconciliation can mean a clinic doesn't get paid on time. You will pair closely with our
+    compliance and data teams, and you'll be expected to reason carefully about idempotency, replay
+    safety, and backward compatibility across schema versions.</p>
+
+    <h2>What you'll do</h2>
+    <ul>
+      <li>Own the event-sourced ledger service end to end, including schema evolution and replay tooling</li>
+      <li>Design APIs consumed by both internal services and a handful of external insurer integrations</li>
+      <li>Partner with the compliance team to keep every write auditable and reversible</li>
+      <li>Improve our on-call rotation's tooling — better runbooks, better alerts, fewer 3am pages</li>
+      <li>Mentor two mid-level engineers who recently joined the team</li>
+    </ul>
+
+    <h2>What we're looking for</h2>
+    <ul>
+      <li>5+ years building backend systems in a strongly-typed language (we use Go and Kotlin)</li>
+      <li>Direct experience with event sourcing, CQRS, or append-only ledger designs</li>
+      <li>Comfort owning a service through an on-call rotation</li>
+      <li>Clear written communication — most of our design work happens in async docs</li>
+    </ul>
+
+    <h2>Compensation and benefits</h2>
+    <p>The salary range for this role is $165,000–$205,000 depending on level and location, plus equity.
+    Full details are on our <a href="/benefits">benefits page</a>, and our approach to leveling and pay
+    equity is described in our <a href="/engineering-blog/how-we-pay">engineering blog</a>. Meridian
+    Health is an <a href="/eeo">Equal Opportunity Employer</a> and considers all qualified applicants
+    without regard to race, color, religion, sex, national origin, age, disability, or veteran status.</p>
+  </section>
+
+  <form class="application" id="application-form" action="#" onsubmit="return false;">
+    <h2>Apply to this role</h2>
+    <p class="hint">Fields marked * are required.</p>
+
+    <div class="row2">
+      <div class="field">
+        <label for="first-name">First name *</label>
+        <input type="text" id="first-name" name="firstName" required>
+      </div>
+      <div class="field">
+        <label for="last-name">Last name *</label>
+        <input type="text" id="last-name" name="lastName" required>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="email">Email *</label>
+        <input type="email" id="email" name="email" required>
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input type="tel" id="phone" name="phone">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="location">Current location (City, State) *</label>
+      <input type="text" id="location" name="location" required placeholder="e.g. Austin, TX">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="linkedin">LinkedIn URL <span class="hint">(optional)</span></label>
+        <input type="url" id="linkedin" name="linkedin">
+      </div>
+      <div class="field">
+        <label for="portfolio">Portfolio / website <span class="hint">(optional)</span></label>
+        <input type="url" id="portfolio" name="portfolio">
+      </div>
+    </div>
+
+    <div class="required-note">This role gets a lot of applicants. The question below matters more to
+    us than any other field on this form — please answer it specifically, not generically.</div>
+
+    <div class="field">
+      <label for="why-role">Why are you interested in this role? *</label>
+      <textarea id="why-role" name="whyRole" required placeholder="Tell us specifically — generic answers are easy to spot."></textarea>
+    </div>
+
+    <div class="field">
+      <label for="source">How did you hear about us? <span class="hint">(optional)</span></label>
+      <select id="source" name="source">
+        <option value="">Select one</option>
+        <option value="referral">Employee referral</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="jobboard">Job board</option>
+        <option value="conference">Conference / meetup</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="resume">Resume / CV <span class="hint">(optional — no file has been prepared for this run)</span></label>
+      <input type="file" id="resume" name="resume">
+    </div>
+
+    <fieldset>
+      <legend>Voluntary self-identification (optional)</legend>
+      <div class="field">
+        <label for="gender">Gender</label>
+        <select id="gender" name="gender">
+          <option value="">Decline to answer</option>
+          <option value="woman">Woman</option>
+          <option value="man">Man</option>
+          <option value="nonbinary">Non-binary</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="veteran">Veteran status</label>
+        <select id="veteran" name="veteran">
+          <option value="">Decline to answer</option>
+          <option value="yes">I am a veteran</option>
+          <option value="no">I am not a veteran</option>
+        </select>
+      </div>
+    </fieldset>
+
+    <label class="consent">
+      <input type="checkbox" id="consent" name="consent">
+      I agree to Meridian Health's <a href="/privacy">privacy policy</a> and consent to my data being
+      processed for the purposes of this application.
+    </label>
+
+    <div>
+      <button type="submit" class="submit">Submit Application</button>
+    </div>
+  </form>
+</main>
+
+<footer class="site">
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Service</a>
+  <a href="https://linkedin.com/company/meridian-health-example">LinkedIn</a>
+  <a href="https://x.com/meridianhealth_example">X / Twitter</a>
+  <div style="margin-top:12px;">© 2026 Meridian Health, Inc. Fixture page for Clippy's eval harness — not a real posting.</div>
+</footer>
+</body>
+</html>

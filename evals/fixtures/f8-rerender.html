@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Site Reliability Engineer — Palisade Cloud | Careers</title>
+<style>
+  :root { --ink:#1b1f23; --muted:#5b6470; --line:#e3e6ea; --accent:#0b5fff; --bg:#fff; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); margin: 0; line-height: 1.55; }
+  header.site { display:flex; align-items:center; justify-content:space-between; padding: 16px 32px; border-bottom: 1px solid var(--line); }
+  header.site .brand { font-weight: 700; font-size: 18px; }
+  nav.site a { color: var(--muted); text-decoration: none; margin-left: 24px; font-size: 14px; }
+  main { max-width: 780px; margin: 0 auto; padding: 32px; }
+  .posting-head h1 { font-size: 26px; margin: 0 0 4px; }
+  .posting-head .meta { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  section.description h2 { font-size: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 32px; }
+  section.description p, section.description li { font-size: 15px; }
+  form.application { margin-top: 40px; border-top: 2px solid var(--line); padding-top: 24px; }
+  form.application h2 { font-size: 20px; margin-bottom: 4px; }
+  .field { margin-bottom: 18px; }
+  .field label { display:block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field input[type=text], .field input[type=email], .field input[type=tel] {
+    width:100%; padding: 9px 10px; border: 1px solid #c8ccd2; border-radius: 6px; font-size: 14px; font-family: inherit; }
+  .row2 { display:flex; gap: 16px; }
+  .row2 .field { flex: 1; }
+  button.submit { background: var(--accent); color:#fff; border:0; padding: 12px 22px; border-radius: 6px; font-size: 15px; font-weight: 600; cursor:pointer; margin-top: 8px; }
+  footer.site { border-top: 1px solid var(--line); margin-top: 48px; padding: 24px 32px; color: var(--muted); font-size: 13px; }
+  footer.site a { color: var(--muted); margin-right: 16px; }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="brand">Palisade Cloud</div>
+  <nav class="site">
+    <a href="/">Home</a>
+    <a href="/jobs">Jobs</a>
+    <a href="/about">About</a>
+    <a href="/contact">Contact</a>
+  </nav>
+</header>
+
+<main>
+  <div class="posting-head">
+    <h1>Site Reliability Engineer</h1>
+    <div class="meta">Palisade Cloud · Remote (US) · Full-time · <a href="#application-form">Apply below</a></div>
+  </div>
+
+  <section class="description">
+    <p>Palisade Cloud runs managed Kubernetes for about 400 mid-market customers. This role joins our
+    six-person SRE team, which owns the control plane that provisions and upgrades every customer
+    cluster. We page roughly once a week across the whole team, which we consider too often, and a
+    chunk of this role is making that number smaller.</p>
+
+    <h2>What you'll do</h2>
+    <ul>
+      <li>Own upgrade orchestration across customer clusters, including rollback tooling</li>
+      <li>Reduce alert noise — today about a third of pages turn out to be non-actionable</li>
+      <li>Build better staging environments that actually catch upgrade regressions</li>
+      <li>Take a share of the on-call rotation once ramped up</li>
+    </ul>
+
+    <h2>What we're looking for</h2>
+    <ul>
+      <li>4+ years operating Kubernetes in production, ideally as a managed-service provider</li>
+      <li>Comfort with Go — most of our control plane is written in it</li>
+      <li>A track record of turning a noisy on-call rotation into a quiet one</li>
+    </ul>
+
+    <h2>Compensation and benefits</h2>
+    <p>$155,000–$190,000 base plus equity. Full band details on our <a href="/benefits">benefits
+    page</a>. Palisade Cloud is an <a href="/eeo">Equal Opportunity Employer</a>.</p>
+  </section>
+
+  <form class="application" id="application-form" action="#" onsubmit="return false;">
+    <h2>Apply to this role</h2>
+    <p class="hint">Fields marked * are required.</p>
+
+    <!--
+      The fields below live inside #field-container. 2.5s after this page
+      finishes loading, a script replaces this container's innerHTML with an
+      equivalent markup block — same ids, names, and labels, but entirely new
+      DOM nodes. Any data-clippy-ref stamped on the old nodes (and any
+      Playwright locator holding one) goes stale at that instant. This mirrors
+      a real SPA re-render (e.g. a React re-mount after a late-arriving
+      profile fetch) and is the exact failure mode §8.4's stale-ref recovery
+      exists for.
+    -->
+    <div id="field-container">
+      <div class="row2">
+        <div class="field">
+          <label for="first-name">First name *</label>
+          <input type="text" id="first-name" name="firstName" required>
+        </div>
+        <div class="field">
+          <label for="last-name">Last name *</label>
+          <input type="text" id="last-name" name="lastName" required>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="email">Email *</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input type="tel" id="phone" name="phone">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="location">Current location (City, State) *</label>
+        <input type="text" id="location" name="location" required>
+      </div>
+    </div>
+
+    <div>
+      <button type="submit" class="submit">Submit Application</button>
+    </div>
+  </form>
+</main>
+
+<footer class="site">
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Service</a>
+  <a href="https://linkedin.com/company/palisade-cloud-example">LinkedIn</a>
+  <div style="margin-top:12px;">© 2026 Palisade Cloud, Inc. Fixture page for Clippy's eval harness — not a real posting.</div>
+</footer>
+
+<script>
+  (function () {
+    var container = document.getElementById('field-container');
+    // Snapshot the PRISTINE markup at load time, before any agent interaction.
+    // Restoring exactly this after the timer fires simulates a re-render that
+    // discards whatever the user (or agent) had already typed — the worst
+    // case, and the one worth testing.
+    var pristine = container.innerHTML;
+    setTimeout(function () {
+      container.innerHTML = pristine;
+    }, 2500);
+  })();
+</script>
+</body>
+</html>

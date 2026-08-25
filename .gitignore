@@ -5,3 +5,4 @@ dist/
 .env.local
 runs/
 profile.json
+evals/runs/

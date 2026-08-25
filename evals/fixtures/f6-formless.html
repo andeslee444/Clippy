@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Product Designer — Vantable | Careers</title>
+<style>
+  :root { --ink:#1b1f23; --muted:#5b6470; --line:#e3e6ea; --accent:#e8590c; --bg:#fff; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); margin: 0; line-height: 1.55; }
+  header.site { display:flex; align-items:center; justify-content:space-between; padding: 16px 32px; border-bottom: 1px solid var(--line); }
+  header.site .brand { font-weight: 700; font-size: 18px; }
+  nav.site a { color: var(--muted); text-decoration: none; margin-left: 24px; font-size: 14px; }
+  main { max-width: 780px; margin: 0 auto; padding: 32px; }
+  .posting-head h1 { font-size: 26px; margin: 0 0 4px; }
+  .posting-head .meta { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+  section.description h2 { font-size: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: 32px; }
+  section.description p, section.description li { font-size: 15px; }
+
+  /* Everything below is a JS-driven "app-like" application UI, not an HTML
+     <form>. This mirrors how a real Workday posting is built — no <form>
+     element anywhere in the document, every control wired through a click
+     handler, state held in JS/the DOM rather than form submission. */
+  .app-panel { margin-top: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 24px; }
+  .app-panel h2 { font-size: 20px; margin: 0 0 4px; }
+  .field { margin-bottom: 18px; }
+  .field label { display:block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field input[type=text], .field input[type=email], .field input[type=tel] {
+    width:100%; padding: 9px 10px; border: 1px solid #c8ccd2; border-radius: 6px; font-size: 14px; font-family: inherit; }
+  .row2 { display:flex; gap: 16px; }
+  .row2 .field { flex: 1; }
+  .step-tabs { display:flex; gap:8px; margin-bottom: 20px; }
+  .step-tabs button { border:1px solid var(--line); background:#f7f7f8; border-radius:6px; padding:8px 14px;
+    font-size:13px; cursor:pointer; }
+  .step-tabs button.active { background: var(--accent); color:#fff; border-color: var(--accent); }
+  .actions { display:flex; gap:12px; margin-top: 20px; }
+  button.primary { background: var(--accent); color:#fff; border:0; padding: 12px 22px; border-radius: 6px;
+    font-size: 15px; font-weight: 600; cursor:pointer; }
+  button.secondary { background:#fff; color: var(--ink); border:1px solid #c8ccd2; padding: 12px 22px;
+    border-radius: 6px; font-size: 15px; cursor:pointer; }
+  .status { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .status.confirmed { color: #0f9d58; font-weight: 600; }
+  footer.site { border-top: 1px solid var(--line); margin-top: 48px; padding: 24px 32px; color: var(--muted); font-size: 13px; }
+  footer.site a { color: var(--muted); margin-right: 16px; }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="brand">Vantable</div>
+  <nav class="site">
+    <a href="/">Home</a>
+    <a href="/jobs">Jobs</a>
+    <a href="/about">About</a>
+    <a href="/contact">Contact</a>
+  </nav>
+</header>
+
+<main>
+  <div class="posting-head">
+    <h1>Product Designer</h1>
+    <div class="meta">Vantable · Onsite, Seattle, WA · Full-time · <a href="#app-panel">Apply below</a></div>
+  </div>
+
+  <section class="description">
+    <p>Vantable makes scheduling software for hospital systems. This is our first dedicated Product
+    Designer hire — today design work is split between two PMs and a contractor, and it shows. You'd
+    own design end to end for a product used by roughly 30,000 nurses and schedulers across 60
+    hospital systems, most of whom are deep in a busy shift when they open our app.</p>
+
+    <h2>What you'll do</h2>
+    <ul>
+      <li>Own the design system from scratch — today every screen is bespoke</li>
+      <li>Run research directly with nurses and charge schedulers, often on hospital floors</li>
+      <li>Partner with two PMs and six engineers across web and native mobile</li>
+      <li>Design for genuinely high-stress, low-attention moments — a scheduling error costs a shift</li>
+    </ul>
+
+    <h2>What we're looking for</h2>
+    <ul>
+      <li>5+ years of product design, at least 2 owning a 0-to-1 design system</li>
+      <li>Comfort designing for operational, high-stakes software, not just consumer polish</li>
+      <li>Experience running your own research — you won't have a dedicated researcher</li>
+    </ul>
+
+    <h2>Compensation and benefits</h2>
+    <p>$150,000–$185,000 base plus equity. Full band details on our <a href="/benefits">benefits
+    page</a>. Vantable is an <a href="/eeo">Equal Opportunity Employer</a>.</p>
+  </section>
+
+  <!-- Deliberately no <form> element anywhere on this page. Every control
+       below is a plain input outside any form, and every button is
+       type="button" wired through addEventListener. -->
+  <div class="app-panel" id="app-panel">
+    <h2>Apply to this role</h2>
+    <p class="hint">This application is a single-page app — there is no traditional form submission.
+    Every action below is a button click.</p>
+
+    <div class="step-tabs">
+      <button type="button" class="active" id="tab-details">1. Your details</button>
+      <button type="button" id="tab-review">2. Review</button>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="first-name">First name</label>
+        <input type="text" id="first-name" name="firstName">
+      </div>
+      <div class="field">
+        <label for="last-name">Last name</label>
+        <input type="text" id="last-name" name="lastName">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email">
+      </div>
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input type="tel" id="phone" name="phone">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="location">Current location (City, State)</label>
+      <input type="text" id="location" name="location">
+    </div>
+
+    <div class="actions">
+      <button type="button" class="secondary" id="save-draft-btn">Save draft</button>
+      <button type="button" class="primary" id="submit-btn">Submit Application</button>
+    </div>
+
+    <div class="status" id="status-line" role="status">No draft saved yet.</div>
+  </div>
+</main>
+
+<footer class="site">
+  <a href="/privacy">Privacy Policy</a>
+  <a href="/terms">Terms of Service</a>
+  <a href="https://linkedin.com/company/vantable-example">LinkedIn</a>
+  <div style="margin-top:12px;">© 2026 Vantable, Inc. Fixture page for Clippy's eval harness — not a real posting.</div>
+</footer>
+
+<script>
+  // Purely cosmetic app-state wiring — nothing here submits data anywhere.
+  // The point of this fixture is the ABSENCE of a <form>, not what the JS does.
+  document.getElementById('tab-review').addEventListener('click', function () {
+    document.getElementById('tab-review').classList.add('active');
+    document.getElementById('tab-details').classList.remove('active');
+  });
+  document.getElementById('tab-details').addEventListener('click', function () {
+    document.getElementById('tab-details').classList.add('active');
+    document.getElementById('tab-review').classList.remove('active');
+  });
+  document.getElementById('save-draft-btn').addEventListener('click', function () {
+    document.getElementById('status-line').textContent = 'Draft saved locally.';
+    document.getElementById('status-line').classList.remove('confirmed');
+  });
+  document.getElementById('submit-btn').addEventListener('click', function () {
+    var line = document.getElementById('status-line');
+    line.textContent = 'Application submitted.';
+    line.classList.add('confirmed');
+  });
+</script>
+</body>
+</html>

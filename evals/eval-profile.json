@@ -1,0 +1,57 @@
+{
+  "name": "Jordan Rivera",
+  "email": "jordan.rivera@example.com",
+  "phone": "512-555-0148",
+  "location": "Austin, TX",
+  "workAuthorized": true,
+  "needsSponsorship": false,
+  "salaryExpectation": "",
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/jordan-rivera-example",
+    "portfolio": "https://jordanrivera.example.dev"
+  },
+  "employers": [
+    {
+      "company": "Northwind Analytics",
+      "title": "Senior Product Manager",
+      "start": "2022",
+      "end": "2026",
+      "bullets": [
+        "Led a cross-functional team of 8 engineers to launch a fraud-detection pipeline that cut false positives by 40%",
+        "Grew self-serve signups from 12,000 to 50,000 monthly active users over 18 months",
+        "Shipped a usage-based billing system that increased net revenue retention to 128%",
+        "Ran quarterly planning across 3 pods, cutting cycle time from six weeks to four"
+      ]
+    },
+    {
+      "company": "Bluepeak Software",
+      "title": "Product Manager",
+      "start": "2019",
+      "end": "2022",
+      "bullets": [
+        "Owned the onboarding funnel, raising activation rate from 22% to 35% in one year",
+        "Partnered with design and engineering to ship a redesigned dashboard used by 9,000 customers",
+        "Wrote and prioritized the roadmap for a 6-person engineering team"
+      ]
+    },
+    {
+      "company": "Camino Retail",
+      "title": "Associate Product Manager",
+      "start": "2017",
+      "end": "2019",
+      "bullets": [
+        "Launched an inventory forecasting tool that reduced stockouts by 18% across 40 stores",
+        "Coordinated beta testing with 15 store managers ahead of a national rollout"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "school": "University of Texas at Austin",
+      "degree": "B.S. Computer Science",
+      "end": "2017"
+    }
+  ],
+  "answers": {},
+  "sourceDocument": "evals/profile.json"
+}

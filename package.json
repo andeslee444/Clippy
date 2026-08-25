@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "spine": "tsx src/cli/spine.ts",
     "capture-fixture": "tsx scripts/capture-fixture.ts",
+    "eval": "node evals/run.mjs",
     "build": "node scripts/build.mjs",
     "shell": "npm run build && electron dist/shell/main.js"
   },
