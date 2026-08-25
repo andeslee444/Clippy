@@ -13,6 +13,10 @@ import { ClaudeActBrain } from "../brains/act-brain.js";
 import { OpenAICompatBrain } from "../brains/openai-brain.js";
 import type { ActBrain } from "../brains/types.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
+import { ingestResume, draftToProfile } from "../hands/resume/ingest.js";
+import { loadProfile, saveProfile, factsOf, type Profile } from "../memory/profile.js";
+import { JenovaKnowBrain } from "../brains/know-brain.js";
+import { draftTailored } from "../brains/draft.js";
 
 const HELP = `
   read                 snapshot the page and print the ref'd tree
@@ -24,6 +28,12 @@ const HELP = `
   submit <ref>         submit (always gated)
   do <goal>            let the brain pursue a goal (uses CLIPPY_BRAIN)
   demo <kind> <name> [v] run one scripted effect by field name — no API key
+
+  ingest <path>        read a resume into profile.json (docx, pdf, …)
+  profile              summarise the loaded profile
+  fit                  score the CURRENT PAGE against your profile
+  draft                draft a tailored bullet for the current page, validated
+
   help                 this
   quit
 `;
@@ -72,6 +82,31 @@ process.on("SIGINT", async () => {
   process.exit(130);
 });
 
+const PROFILE_PATH = join(process.cwd(), "profile.json");
+
+/** Loaded on demand — most commands do not need it, and it may not exist yet. */
+let profile: Profile | null = null;
+async function requireProfile(): Promise<Profile | null> {
+  if (profile) return profile;
+  try {
+    profile = await loadProfile(PROFILE_PATH);
+    return profile;
+  } catch (err) {
+    console.error(`✗ no usable profile at ${PROFILE_PATH}`);
+    console.error(`  run: ingest <path-to-your-resume.docx>`);
+    console.error(`  (${err instanceof Error ? err.message.split("\n")[0] : String(err)})`);
+    return null;
+  }
+}
+
+/** The current page, rendered as the posting text a knowledge turn reasons over. */
+async function currentPosting(): Promise<string> {
+  inFlight = { kind: "readPage" };
+  const snap = await executor.observe({ kind: "readPage" }, () => readPage(session.page));
+  const text = await session.page.evaluate(() => document.body.innerText.slice(0, 6000));
+  return `Page: ${snap.title}\nURL: ${snap.url}\n\n${text}`;
+}
+
 const steps: StepRecord[] = [];
 const brainTools = makeTools({
   runEffect: (effect) => executor.runEffect(effect),
@@ -112,6 +147,76 @@ for (;;) {
       const { writeFile } = await import("node:fs/promises");
       await writeFile("/tmp/clippy-capture.png", Buffer.from(c.base64, "base64"));
       console.log(`${c.width}x${c.height} truncated=${c.truncated} -> /tmp/clippy-capture.png`);
+      continue;
+    }
+
+    if (cmd === "ingest") {
+      const path = rest.join(" ");
+      if (!path) { console.log("usage: ingest <path-to-resume.docx|pdf>"); continue; }
+      const draft = await ingestResume(path);
+      await saveProfile(PROFILE_PATH, draftToProfile(draft, path));
+      profile = await loadProfile(PROFILE_PATH);
+      console.log(`saved ${PROFILE_PATH}`);
+      console.log(`  ${draft.employers.length} employers, ${draft.education.length} education`);
+      for (const e of draft.employers) {
+        console.log(`    ${e.company.padEnd(30)} ${e.start}–${e.end ?? "present"}  ${e.bullets.length}b`);
+      }
+      if (draft.unplaced.length > 0) {
+        // Surfaced, never dropped — a format the parser did not understand should
+        // be visible rather than silently absent from the facts it vouches for.
+        console.log(`  ⚠ ${draft.unplaced.length} item(s) could not be placed:`);
+        for (const u of draft.unplaced) console.log(`      ${u.slice(0, 90)}`);
+      }
+      console.log(`  ⚠ review by hand before use — work authorisation, sponsorship, and`);
+      console.log(`    salary are NOT extracted from a resume and are left blank.`);
+      continue;
+    }
+
+    if (cmd === "profile") {
+      const p = await requireProfile();
+      if (!p) continue;
+      const f = factsOf(p);
+      console.log(`${p.name} · ${p.location}`);
+      console.log(`  employers: ${p.employers.length}   education: ${p.education.length}`);
+      console.log(`  work authorised: ${p.workAuthorized}   needs sponsorship: ${p.needsSponsorship}`);
+      console.log(`  salary: ${p.salaryExpectation || "(blank — set this by hand)"}`);
+      console.log(`  validator can vouch for: ${f.organisations.length} orgs, ${f.titles.length} titles, ` +
+        `${f.years.size} years, ${f.metrics.length} metrics`);
+      continue;
+    }
+
+    if (cmd === "fit") {
+      const p = await requireProfile();
+      if (!p) continue;
+      const posting = await currentPosting();
+      const answer = await JenovaKnowBrain.fromEnv().ask(
+        "assessFit",
+        `Score this candidate against this job posting from 1-10 and give two sentences of ` +
+          `reasoning. Be blunt about gaps.\n\nPOSTING:\n${posting}\n\nCANDIDATE:\n${JSON.stringify(p.employers)}`,
+      );
+      console.log(`\n${answer.text.trim()}\n\n($${answer.cost.toFixed(4)})`);
+      continue;
+    }
+
+    if (cmd === "draft") {
+      const p = await requireProfile();
+      if (!p) continue;
+      const posting = await currentPosting();
+      const result = await draftTailored(
+        JenovaKnowBrain.fromEnv(),
+        factsOf(p),
+        `Write ONE tailored resume bullet for this posting, using ONLY facts from the ` +
+          `candidate's experience. Invent no employers, numbers, or dates. Reply with the ` +
+          `bullet only.\n\nPOSTING:\n${posting}\n\nEXPERIENCE:\n${JSON.stringify(p.employers)}`,
+        3,
+      );
+      if (result.ok) {
+        console.log(`\n${result.text.trim()}\n\n✓ every claim traced to your profile ($${result.cost.toFixed(4)})`);
+      } else {
+        // §7.4: text that failed validation is never shown as usable output.
+        console.log(`\n✗ could not produce a bullet that survives the integrity check ($${result.cost.toFixed(4)})`);
+        console.log(`  unfounded: ${result.violations.join("; ")}`);
+      }
       continue;
     }
 
