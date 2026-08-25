@@ -975,7 +975,11 @@ const RELIABILITY_THRESHOLD = 0.9;
 
 /** Aggregate repeated runs of one flow into a pass rate. */
 function summariseRepeats(id, title, runs) {
-  const passes = runs.filter((r) => r.status === "PASS").length;
+  // Derive from the checks, not from a `status` field — the outcome object has
+  // no such field, so this silently counted every run as a failure and reported
+  // 4-pass-1-fail as 0/5. A pass rate that is always 0 looks exactly like a
+  // broken flow, which is the worst possible way for a reliability meter to lie.
+  const passes = runs.filter((r) => (r.checks ?? []).every((c) => c.pass)).length;
   const rate = passes / runs.length;
   // Which criteria failed, and how often — a flow failing the SAME criterion
   // every time is broken; failing different ones is variance.
