@@ -75,15 +75,83 @@ export async function performEffect(page: Page, raw: Effect): Promise<void> {
       break;
     case "fill":
       await locator.fill(effect.value);
+      await verifyLanded(locator, effect.value, effect.ref);
       break;
     case "select":
-      await locator.selectOption(effect.value);
+      await selectAnything(page, locator, effect.value, effect.ref);
       break;
     case "upload":
       await locator.setInputFiles(effect.path);
       break;
   }
   await settle(page);
+}
+
+/**
+ * A fill that changed nothing is a FAILURE, not a success.
+ *
+ * Custom widgets — the "comboboxes" every ATS builds out of an input and a
+ * listbox — accept `fill()` without error and discard the value. Reporting that
+ * as `ok` breaks the contract the whole loop rests on: the model retries on
+ * failure and moves on after success, so a truthful-looking no-op makes it fill
+ * the same field forever. Observed live on a Discord posting: 27 page reads,
+ * 36 fills, step budget exhausted.
+ *
+ * Only emptiness counts as failure. Fields legitimately transform what you type
+ * — phone numbers get reformatted, dates normalised — so requiring an exact
+ * match back would reject good writes.
+ */
+async function verifyLanded(locator: Locator, value: string, ref: Ref): Promise<void> {
+  if (!value) return;
+  const after = await locator.inputValue().catch(() => null);
+  if (after !== null && after.trim() === "") {
+    throw new Error(
+      `fill on ${ref} did not take: the field is still empty. It is probably a custom ` +
+        `widget, not a plain input — try select, or click it and choose from the list.`,
+    );
+  }
+}
+
+/**
+ * Choose an option whether or not the element is a real `<select>`.
+ *
+ * `selectOption` only works on `<select>`. Greenhouse, Lever and Workday all
+ * render dropdowns as an input plus a listbox, so the model sees "combobox",
+ * reasonably calls select, and gets "Element is not a <select>".
+ *
+ * Presenting one verb that works on both is `hands`' job. Pushing the DOM
+ * distinction up to the model means teaching it a detail it cannot reliably
+ * observe from the tree.
+ */
+async function selectAnything(
+  page: Page,
+  locator: Locator,
+  value: string,
+  ref: Ref,
+): Promise<void> {
+  try {
+    await locator.selectOption(value, { timeout: 3_000 });
+    return;
+  } catch (err) {
+    if (!/not a <select>|Element is not a/i.test(String(err))) throw err;
+  }
+
+  // Custom widget: click it, type to filter, then click the matching option.
+  await locator.click().catch(() => undefined);
+  await locator.fill(value).catch(() => undefined);
+  await page.waitForTimeout(400);
+
+  const option = page
+    .locator('[role="option"], [role="listbox"] li, [class*="option"]')
+    .filter({ hasText: value })
+    .first();
+
+  if ((await option.count()) > 0) {
+    await option.click({ timeout: 3_000 });
+    return;
+  }
+
+  await verifyLanded(locator, value, ref);
 }
 
 export interface SettleResult {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { StaleRefError, SubmitCapableError, performEffect } from "./act.js";
 
-function fakePage(opts: { found?: boolean; submitCapable?: boolean } = {}) {
+function fakePage(opts: { found?: boolean; submitCapable?: boolean; swallowsFill?: boolean } = {}) {
   const found = opts.found ?? true;
   const calls: string[] = [];
   const locator = {
@@ -11,6 +11,7 @@ function fakePage(opts: { found?: boolean; submitCapable?: boolean } = {}) {
     evaluate: async () => ({ submitCapable: Boolean(opts.submitCapable), formless: false }),
     click: vi.fn(async () => { calls.push("click"); }),
     fill: vi.fn(async (v: string) => { calls.push(`fill:${v}`); }),
+    inputValue: async () => (opts.swallowsFill ? "" : "written"),
     selectOption: vi.fn(async (v: string) => { calls.push(`select:${v}`); }),
     setInputFiles: vi.fn(async (p: string) => { calls.push(`upload:${p}`); }),
   };
@@ -20,6 +21,7 @@ function fakePage(opts: { found?: boolean; submitCapable?: boolean } = {}) {
       locator: locatorFn,
       goto: vi.fn(async (u: string) => { calls.push(`goto:${u}`); }),
       waitForLoadState: vi.fn(async () => {}),
+      waitForTimeout: vi.fn(async () => {}),
     } as any,
     locator,
     locatorFn,
@@ -107,3 +109,33 @@ describe("performEffect", () => {
     expect(calls).toContain("goto:https://example.com/");
   });
 });
+
+describe("performEffect — a fill that changes nothing is a failure", () => {
+  it("accepts a fill that lands", async () => {
+    const { page } = fakePage();
+    await expect(performEffect(page, { kind: "fill", ref: "g1-r2", value: "Andes" }))
+      .resolves.toBeUndefined();
+  });
+
+  it("REJECTS a fill the widget silently swallowed", async () => {
+    // Custom ATS comboboxes accept fill() without error and discard the value.
+    // Reporting ok made the model refill the same field forever — observed live
+    // as 36 fills across 27 page reads before the step budget stopped it.
+    const { page } = fakePage({ swallowsFill: true });
+    await expect(performEffect(page, { kind: "fill", ref: "g1-r2", value: "Andes" }))
+      .rejects.toThrow(/did not take/);
+  });
+
+  it("tells the model what to try instead", async () => {
+    const { page } = fakePage({ swallowsFill: true });
+    await expect(performEffect(page, { kind: "fill", ref: "g1-r2", value: "x" }))
+      .rejects.toThrow(/custom widget|choose from the list/);
+  });
+
+  it("does not police an empty fill — clearing a field is legitimate", async () => {
+    const { page } = fakePage({ swallowsFill: true });
+    await expect(performEffect(page, { kind: "fill", ref: "g1-r2", value: "" }))
+      .resolves.toBeUndefined();
+  });
+});
+
