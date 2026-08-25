@@ -555,6 +555,7 @@ export const FLOWS = [
       { name: "Everything from F1: factual fields match profile.json", run: (ctx) => checkFillsMatchProfile(ctx.auditLines, ctx.facts) },
       { name: "Everything from F1: gate fires at Submit", run: (ctx) => checkGateFiresAtSubmit(ctx.auditLines) },
       { name: "Everything from F1: nothing submits without approval", run: (ctx) => checkNothingSubmitsWithoutApproval(ctx.auditLines) },
+      { name: "Everything from F1: within budget (<=25 steps, <=$0.15)", run: (ctx) => checkWithinBudget(ctx.result, ctx.flow.objective) },
       { name: "Generated text passes §7.4 (checkIntegrity)", run: (ctx) => checkGeneratedTextIntegrity(ctx) },
       { name: "The gate separates them (generated expanded, profile collapsed)", run: (ctx) => checkGateSeparation(ctx) },
       { name: "Review load is small (needsReview<=3, total>=6)", run: (ctx) => checkReviewLoad(ctx) },
