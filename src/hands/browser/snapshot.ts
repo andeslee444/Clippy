@@ -19,6 +19,18 @@ export interface Snapshot {
   title: string;
   nodes: RefNode[];
   /**
+   * The page's visible prose, trimmed.
+   *
+   * The ref'd tree contains only INTERACTIVE elements, so a run could see every
+   * form field and not one word of the job description. Asked to judge fit, the
+   * model correctly reported it could not see the posting — the tree is the
+   * right observation for acting and useless for reading.
+   *
+   * Capped, because §8.3's whole argument is that observation size dominates
+   * cost. A few hundred tokens of prose is worth it; the full page is not.
+   */
+  text: string;
+  /**
    * The page contains no `<form>` element, so `submitCapable` is unreliable here.
    *
    * Measured against real ATS platforms: a Workday job page has ZERO forms — it
@@ -54,17 +66,18 @@ let generation = Math.floor(Date.now() / 1000);
 /** Take a fresh ref'd snapshot of the page, bumping the generation (spec §8.2). */
 export async function readPage(page: Page): Promise<Snapshot> {
   const gen = ++generation;
-  const { nodes, formless } = (await page.evaluate(
+  const { nodes, formless, text } = (await page.evaluate(
     ({ src, g }: { src: string; g: number }) => ({
       nodes: (new Function("return (" + src + ")")() as (d: Document, n: number) => unknown)(
         document,
         g,
       ),
       formless: document.querySelector("form") === null,
+      text: (document.body?.innerText ?? "").slice(0, 2500),
     }),
     { src: PAGE_SCRIPT, g: gen },
-  )) as { nodes: RefNode[]; formless: boolean };
-  return { generation: gen, url: page.url(), title: await page.title(), nodes, formless };
+  )) as { nodes: RefNode[]; formless: boolean; text: string };
+  return { generation: gen, url: page.url(), title: await page.title(), nodes, formless, text };
 }
 
 /** Compact text rendering for a model prompt (spec §8.2 — ~2KB, not pixels). */
@@ -79,5 +92,8 @@ export function renderSnapshot(s: Snapshot): string {
       (flags ? ` [${flags}]` : "")
     );
   });
-  return [`# ${s.title}`, `# ${s.url}`, ...lines].join("\n");
+  const prose = s.text.trim()
+    ? ["", "## Page text", s.text.trim().replace(/\n{3,}/g, "\n\n")]
+    : [];
+  return [`# ${s.title}`, `# ${s.url}`, ...lines, ...prose].join("\n");
 }

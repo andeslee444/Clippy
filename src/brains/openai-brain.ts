@@ -4,7 +4,7 @@ import { BudgetTracker } from "../orchestrator/budget.js";
 import { compactOpenAIMessages } from "../orchestrator/compact-openai.js";
 import type { Objective, ObjectiveResult } from "../orchestrator/types.js";
 import type { ActBrain, BrainTools } from "./types.js";
-import { SYSTEM } from "./system-prompt.js";
+import { SYSTEM, SYSTEM_OBSERVE } from "./system-prompt.js";
 
 type Msg = OpenAI.Chat.ChatCompletionMessageParam;
 
@@ -199,7 +199,7 @@ export class OpenAICompatBrain implements ActBrain {
     const budget = new BudgetTracker(objective);
     this.onObserve = () => budget.observe();
     let messages: Msg[] = [
-      { role: "system", content: SYSTEM },
+      { role: "system", content: objective.readOnly ? SYSTEM_OBSERVE : SYSTEM },
       {
         role: "user",
         content: objective.context

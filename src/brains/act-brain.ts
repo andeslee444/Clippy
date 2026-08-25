@@ -4,7 +4,7 @@ import { BudgetTracker } from "../orchestrator/budget.js";
 import { compactMessages } from "../orchestrator/compact-messages.js";
 import type { Objective, ObjectiveResult } from "../orchestrator/types.js";
 import type { ActBrain, BrainTools } from "./types.js";
-import { SYSTEM } from "./system-prompt.js";
+import { SYSTEM, SYSTEM_OBSERVE } from "./system-prompt.js";
 
 /** claude-opus-5, USD per token. Cache reads bill at a tenth of fresh input. */
 const IN = 5 / 1_000_000;
@@ -89,7 +89,7 @@ export class ClaudeActBrain implements ActBrain {
         thinking: { type: "adaptive" },
         // Stable prefix — system + tools are resent every turn.
         cache_control: { type: "ephemeral" },
-        system: SYSTEM,
+        system: objective.readOnly ? SYSTEM_OBSERVE : SYSTEM,
         // readOnly offers observation only — the acting tools are not in the
         // schema at all, so they cannot be called.
         tools: objective.readOnly

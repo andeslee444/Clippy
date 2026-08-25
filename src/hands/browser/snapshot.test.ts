@@ -140,6 +140,7 @@ describe("renderSnapshot", () => {
       url: "https://x.test/apply",
       title: "Apply",
       formless: false,
+      text: "",
       nodes: [
         { ref: "g1-r0", role: "password", name: "Password", value: "•••", submitCapable: false, disabled: false, redacted: true },
         { ref: "g1-r1", role: "button", name: "Submit", submitCapable: true, disabled: true },
@@ -149,3 +150,25 @@ describe("renderSnapshot", () => {
     expect(out).toContain("[disabled]");
   });
 });
+
+describe("renderSnapshot — page text", () => {
+  it("includes the page prose so a run can read the posting", () => {
+    // The ref'd tree is interactive elements only. Without this a triage run
+    // sees every form field and not one word of the job description.
+    const out = renderSnapshot({
+      generation: 1, url: "https://x.test", title: "Job", formless: false,
+      text: "We are looking for a product manager to own our billing platform.",
+      nodes: [{ ref: "g1-r0", role: "button", name: "Apply", submitCapable: false, disabled: false }],
+    });
+    expect(out).toContain("billing platform");
+  });
+
+  it("omits the section entirely when there is no text", () => {
+    const out = renderSnapshot({
+      generation: 1, url: "https://x.test", title: "Job", formless: false, text: "",
+      nodes: [],
+    });
+    expect(out).not.toContain("Page text");
+  });
+});
+
