@@ -12,6 +12,11 @@ export const STOPLIST = new Set([
   "led", "built", "shipped", "drove", "owned", "managed", "designed", "created", "delivered",
   "reduced", "increased", "improved", "scaled", "launched", "migrated", "architected",
   "my", "our", "their", "this", "that", "these", "those", "we", "they",
+  // Capitalised contractions. CAPRUN allows apostrophes, so "I've" matched as a
+  // one-word organisation mid-sentence and every cover letter was rejected.
+  "i've", "i'm", "i'd", "i'll", "we've", "we're", "we'd", "we'll", "you're",
+  "you've", "it's", "that's", "there's", "here's", "don't", "can't", "won't",
+  "isn't", "aren't", "wasn't", "haven't", "hasn't", "didn't", "doesn't",
   // months
   "january", "february", "march", "april", "may", "june", "july", "august",
   "september", "october", "november", "december",

@@ -127,3 +127,32 @@ describe("checkIntegrity — holes found by adversarial probing", () => {
   });
 });
 
+describe("checkIntegrity — false positives found on live cover-letter text", () => {
+  it("does not flag a capitalised contraction as an organisation", () => {
+    // "I've" matched CAPRUN because the pattern allows apostrophes, so every
+    // cover letter written in the first person was rejected.
+    expect(check("I've shipped agent products at Acme Corp").ok).toBe(true);
+  });
+
+  it("REJECTS the target company by default", () => {
+    // Absent from the profile, so fail-closed is correct until told otherwise.
+    expect(check("I want to work at Discord").ok).toBe(false);
+  });
+
+  it("accepts the target company when it is passed as known", () => {
+    // A cover letter names the employer, and the employer is never in the
+    // candidate's own profile. Narrow allowance, not a loosened validator.
+    expect(checkIntegrity("I want to work at Discord", facts, ["Discord"]).ok).toBe(true);
+  });
+
+  it("accepts a possessive form of the target company", () => {
+    expect(checkIntegrity("Discord's safety work is why I applied", facts, ["Discord"]).ok).toBe(true);
+  });
+
+  it("still rejects a DIFFERENT company even when one is allowed", () => {
+    // The allowance is for the company being applied to, not a blanket pass.
+    expect(checkIntegrity("I worked at Globex Industries", facts, ["Discord"]).ok).toBe(false);
+  });
+});
+
+

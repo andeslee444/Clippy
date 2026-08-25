@@ -68,7 +68,22 @@ const norm = (s: string) => s.toLowerCase().replace(/[.,]$/, "").trim();
  * known limit: drafted resume text capitalises company names, so this is a gap
  * an adversary could exploit but a careless model will not fall into.
  */
-export function checkIntegrity(text: string, facts: ProfileFacts): IntegrityResult {
+export function checkIntegrity(
+  text: string,
+  facts: ProfileFacts,
+  /**
+   * Names that are legitimate here despite being absent from the profile —
+   * in practice the company being applied to.
+   *
+   * A cover letter names the employer, and the employer will never be in the
+   * candidate's own profile; that is what a profile is. Without this, every
+   * tailored answer that mentions the company is rejected, and the pressure
+   * becomes to loosen the validator generally — which is how a fail-closed
+   * check quietly turns fail-open. Narrow beats lenient.
+   */
+  alsoKnown: string[] = [],
+): IntegrityResult {
+  const known = alsoKnown.map((k) => k.toLowerCase());
   const violations: Violation[] = [];
 
   for (const year of text.match(YEAR) ?? []) {
@@ -101,12 +116,13 @@ export function checkIntegrity(text: string, facts: ProfileFacts): IntegrityResu
     // to prevent.
     if (words.length === 1 && sentenceInitial(text, match.index)) continue;
 
-    const known =
+    const recognised =
+      known.some((k) => lower === k || lower.includes(k) || k.includes(lower)) ||
       facts.organisations.some((o) => o === lower || lower.includes(o) || o.includes(lower)) ||
       facts.titles.some((t) => t === lower || lower.includes(t) || t.includes(lower)) ||
       facts.corpus.includes(lower);
 
-    if (!known) violations.push({ kind: "organisation", value: phrase });
+    if (!recognised) violations.push({ kind: "organisation", value: phrase });
   }
 
   return { ok: violations.length === 0, violations };
