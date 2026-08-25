@@ -1,6 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { EFFECT_META, type Effect, type Observation } from "./types.js";
 
+describe("provenance on fill/select", () => {
+  it("is optional — an unset provenance stays absent, not defaulted", () => {
+    const filled: Effect = { kind: "fill", ref: "g1-r1", value: "x" };
+    expect("provenance" in filled).toBe(false);
+  });
+
+  it("carries the provenance value through when set", () => {
+    const selected: Effect = { kind: "select", ref: "g1-r2", value: "y", provenance: "generated" };
+    expect(selected.kind === "select" && selected.provenance).toBe("generated");
+  });
+});
+
 describe("EFFECT_META", () => {
   it("declares metadata for every effect kind", () => {
     const kinds: Effect["kind"][] = ["navigate", "click", "fill", "select", "upload", "submit"];

@@ -1,12 +1,25 @@
 /** A generation-scoped element reference, e.g. "g3-r12". Only valid within its generation. */
 export type Ref = string;
 
+/**
+ * Where a filled value came from (spec §9.5).
+ *
+ * The Submit gate groups by this rather than by form order, because that is
+ * where the risk actually sits: a wrong email is a typo, a wrong resume bullet
+ * is a false claim on a real application. Grouping by form structure buries the
+ * two dangerous fields among sixteen boring ones and trains you to skim.
+ *
+ * `human` exists because editing a generated value at the gate PROMOTES it —
+ * once you have written it, it is no longer something a model asserted.
+ */
+export type Provenance = "profile" | "generated" | "human";
+
 /** Changes the world. Returns nothing. Can be gated. */
 export type Effect =
   | { kind: "navigate"; url: string }
   | { kind: "click"; ref: Ref }
-  | { kind: "fill"; ref: Ref; value: string }
-  | { kind: "select"; ref: Ref; value: string }
+  | { kind: "fill"; ref: Ref; value: string; provenance?: Provenance }
+  | { kind: "select"; ref: Ref; value: string; provenance?: Provenance }
   | { kind: "upload"; ref: Ref; path: string }
   | { kind: "submit"; ref: Ref };
 
