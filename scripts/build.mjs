@@ -9,4 +9,13 @@ execFileSync("npx", ["tsc", "-p", "tsconfig.build.json"], { stdio: "inherit" });
 // than failing the build — hence the canary test.
 mkdirSync("dist/hands/browser", { recursive: true });
 copyFileSync("src/hands/browser/page-script.js", "dist/hands/browser/page-script.js");
+
+// preload.cjs is CommonJS on purpose (Electron preload scripts don't support
+// ESM) and the renderer is plain HTML/CSS/JS — tsc will not touch either.
+mkdirSync("dist/shell/renderer", { recursive: true });
+copyFileSync("src/shell/preload.cjs", "dist/shell/preload.cjs");
+for (const f of ["index.html", "renderer.js", "styles.css"]) {
+  copyFileSync(`src/shell/renderer/${f}`, `dist/shell/renderer/${f}`);
+}
+
 console.log("built to dist/");
