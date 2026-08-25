@@ -1,6 +1,7 @@
 import { toMarkdown } from "@firecrawl/anydoc";
 import { parseResume, type ResumeDraft } from "./parse.js";
 import type { Profile } from "../../memory/profile.js";
+import { titleCaseName } from "../../memory/normalise.js";
 
 /**
  * Read a resume document into a profile draft (spec §6.4).
@@ -27,7 +28,8 @@ export async function ingestResume(path: string): Promise<ResumeDraft> {
  */
 export function draftToProfile(draft: ResumeDraft, sourceDocument: string): Profile {
   return {
-    name: draft.name,
+    // Resume headers are typographically ALL-CAPS; names are not.
+    name: titleCaseName(draft.name),
     email: draft.email,
     phone: draft.phone,
     location: draft.location,

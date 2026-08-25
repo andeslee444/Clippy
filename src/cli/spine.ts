@@ -16,6 +16,7 @@ import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 import { ingestResume, draftToProfile } from "../hands/resume/ingest.js";
 import { loadProfile, saveProfile, factsOf, type Profile } from "../memory/profile.js";
 import { renderProfileForModel } from "../memory/render.js";
+import { profileWarnings } from "../memory/normalise.js";
 import { JenovaKnowBrain } from "../brains/know-brain.js";
 import { draftTailored } from "../brains/draft.js";
 
@@ -169,8 +170,9 @@ for (;;) {
         console.log(`  ⚠ ${draft.unplaced.length} item(s) could not be placed:`);
         for (const u of draft.unplaced) console.log(`      ${u.slice(0, 90)}`);
       }
-      console.log(`  ⚠ review by hand before use — work authorisation, sponsorship, and`);
-      console.log(`    salary are NOT extracted from a resume and are left blank.`);
+      for (const w of profileWarnings(await loadProfile(PROFILE_PATH))) {
+        console.log(`  ⚠ ${w.field}: ${w.why}`);
+      }
       continue;
     }
 
@@ -184,6 +186,11 @@ for (;;) {
       console.log(`  salary: ${p.salaryExpectation || "(blank — set this by hand)"}`);
       console.log(`  validator can vouch for: ${f.organisations.length} orgs, ${f.titles.length} titles, ` +
         `${f.years.size} years, ${f.metrics.length} metrics`);
+      const warnings = profileWarnings(p);
+      if (warnings.length > 0) {
+        console.log(`\n  needs your attention before applying:`);
+        for (const w of warnings) console.log(`    ⚠ ${w.field} — ${w.why}`);
+      }
       continue;
     }
 

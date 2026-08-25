@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Apply — Product Manager, Billing · Ledgerline</title>
+<style>body{font:15px/1.6 -apple-system,system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 20px;color:#1a1a1a}
+label{display:block;margin:14px 0 4px;font-weight:600;font-size:13px}input,textarea{width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font:inherit}
+button{margin-top:20px;padding:10px 22px;background:#111;color:#fff;border:0;border-radius:5px;font:inherit;cursor:pointer}
+#done{display:none;margin-top:20px;padding:14px;background:#e8f5e9;border:1px solid #52d98a;border-radius:6px}</style></head>
+<body>
+<h1>Product Manager, Billing</h1>
+<p>Ledgerline · Remote · Full-time</p>
+<p>We are hiring a product manager to own our billing and invoicing platform. You will work
+with engineering on usage-based pricing, dunning, and revenue recognition. We value people who
+can hold both the customer problem and the data model in their head at once.</p>
+
+<form id="app">
+  <label for="fn">First Name*</label><input id="fn" name="fn" required>
+  <label for="ln">Last Name*</label><input id="ln" name="ln" required>
+  <label for="em">Email*</label><input id="em" name="em" type="email" required>
+  <label for="ph">Phone</label><input id="ph" name="ph">
+  <label for="lo">Location</label><input id="lo" name="lo">
+  <button type="submit" id="go">Submit application</button>
+</form>
+<div id="done">✓ Application received. Reference LDG-2026-0041.</div>
+
+<script>
+  // Goes NOWHERE. No network request, no navigation. The point of this fixture
+  // is to exercise the APPROVE path end to end — approval, execution, and the
+  // audit record — with none of the consequences of a real employer.
+  document.getElementById("app").addEventListener("submit", (e) => {
+    e.preventDefault();
+    document.getElementById("app").style.display = "none";
+    document.getElementById("done").style.display = "block";
+    document.title = "Application submitted · Ledgerline";
+  });
+</script>
+</body></html>
