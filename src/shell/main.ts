@@ -54,9 +54,22 @@ function createWindow(): BrowserWindow {
 
   ipcMain.on("clippy:resize", (_e, open: boolean) => {
     const size = open ? OPEN : IDLE;
-    const [x, y] = w.getPosition();
-    w.setBounds({ x, y, ...size }, true);
+    const [x = 0, y = 0] = w.getPosition();
+    const [w0 = 0, h0 = 0] = w.getSize();
+    // Anchor the BOTTOM-RIGHT corner, not the top-left. The clip sits near the
+    // bottom-right of the screen, so growing 96px -> 460px from a fixed top-left
+    // pushes the whole window past the screen edge and the app appears to
+    // vanish. Nothing errors; it is simply not where anyone is looking.
+    w.setBounds({ x: x + (w0 - size.width), y: y + (h0 - size.height), ...size }, true);
     w.setIgnoreMouseEvents(!open, { forward: true });
+  });
+
+  // Dragging is done by hand — see the renderer. `-webkit-app-region: drag`
+  // would be simpler but swallows click events entirely, and the clip has to be
+  // both draggable AND clickable.
+  ipcMain.on("clippy:move", (_e, { dx, dy }: { dx: number; dy: number }) => {
+    const [x = 0, y = 0] = w.getPosition();
+    w.setPosition(Math.round(x + dx), Math.round(y + dy));
   });
 
   return w;

@@ -57,7 +57,38 @@ function setOpen(next) {
   }
 }
 
-clip.addEventListener("click", () => setOpen(!open));
+/* ── drag vs click on one element ─────────────────────────────────────────────
+ * `-webkit-app-region: drag` would handle the drag for free but swallows click
+ * events, so the clip could be moved and never opened. Instead: track movement
+ * from mousedown, and only treat mouseup as a click if the pointer stayed put.
+ * screenX/screenY are used because they are stable while the window itself moves.
+ */
+const DRAG_THRESHOLD = 4;
+let down = null;
+
+clip.addEventListener("mousedown", (e) => {
+  down = { x: e.screenX, y: e.screenY, moved: false };
+  clip.style.cursor = "grabbing";
+});
+
+window.addEventListener("mousemove", (e) => {
+  if (!down) return;
+  const dx = e.screenX - down.x;
+  const dy = e.screenY - down.y;
+  if (!down.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+  down.moved = true;
+  down.x = e.screenX;
+  down.y = e.screenY;
+  window.clippy.move(dx, dy);
+});
+
+window.addEventListener("mouseup", () => {
+  if (!down) return;
+  const wasClick = !down.moved;
+  down = null;
+  clip.style.cursor = "grab";
+  if (wasClick) setOpen(!open);
+});
 document.getElementById("close")?.addEventListener("click", () => setOpen(false));
 
 // §9.3 — ⌥Space summons from anywhere; the main process forwards it here.

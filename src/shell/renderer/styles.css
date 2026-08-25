@@ -17,16 +17,18 @@ html, body {
 }
 
 /* ─── the clip ──────────────────────────────────────────────────────────────
-   -webkit-app-region: drag makes the sprite itself the drag handle (§9.3), so
-   the clip moves without a title bar. Interactive children must opt back OUT
-   with `no-drag`, or they cannot be clicked at all. */
+   NOT `-webkit-app-region: drag`. That is the obvious way to make a frameless
+   window draggable, and it silently swallows click events — the clip would move
+   but never open. Verified by experiment: removing it was what made the click
+   register. Dragging is done by hand in renderer.js instead, because this one
+   element has to be both draggable and clickable. */
 #clip {
   position: absolute;
   right: 18px;
   bottom: 18px;
   width: 42px;
   height: 52px;
-  -webkit-app-region: drag;
+  cursor: grab;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
   transition: transform 160ms ease;
 }

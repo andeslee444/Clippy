@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("clippy", {
   answerGate: (approved) => ipcRenderer.send("clippy:gate-answer", approved),
   pointerOver: (over) => ipcRenderer.send("clippy:pointer-over", over),
   resize: (open) => ipcRenderer.send("clippy:resize", open),
+  move: (dx, dy) => ipcRenderer.send("clippy:move", { dx, dy }),
   onState: (fn) => ipcRenderer.on("clippy:state", (_e, p) => fn(p)),
   onStep: (fn) => ipcRenderer.on("clippy:step", (_e, p) => fn(p)),
   onGate: (fn) => ipcRenderer.on("clippy:gate", (_e, p) => fn(p)),
