@@ -1,0 +1,173 @@
+/*
+ * The window is transparent and frameless. Nothing here may paint a background
+ * on <html> or <body> — a solid body turns the whole rectangle opaque and the
+ * paperclip becomes a grey box floating over the desktop.
+ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font: 13px/1.45 -apple-system, system-ui, sans-serif;
+  color: #e8eaf0;
+  user-select: none;
+  cursor: default;
+}
+
+/* ─── the clip ──────────────────────────────────────────────────────────────
+   -webkit-app-region: drag makes the sprite itself the drag handle (§9.3), so
+   the clip moves without a title bar. Interactive children must opt back OUT
+   with `no-drag`, or they cannot be clicked at all. */
+#clip {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 42px;
+  height: 52px;
+  -webkit-app-region: drag;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+  transition: transform 160ms ease;
+}
+
+.wire   { stroke: #c9ced8; transition: stroke 200ms ease; }
+.sclera { fill: #fff; }
+.pupil  { fill: #1a1a1a; transition: transform 120ms ease; }
+
+/* ─── character states (spec §9.2) ─────────────────────────────────────────
+   Only `blocked` and `stuck` compete for attention, and only `stuck` repeats:
+   a gate means the user is probably right there, while stuck means the run has
+   been frozen for an unknown length of time. */
+
+body.idle .wire      { stroke: #c9ced8; }
+body.idle .pupil     { animation: blink 6s infinite; }
+
+body.listening .wire { stroke: #7cc4ff; }
+body.listening #clip { transform: translateY(-3px); }
+
+body.thinking .wire  { stroke: #9a8cff; animation: pulse 1.4s ease-in-out infinite; }
+
+body.acting .wire    { stroke: #52d98a; }
+body.acting #clip    { animation: work 1.1s ease-in-out infinite; }
+
+body.blocked .wire   { stroke: #f0c04a; }
+body.blocked #clip   { animation: bounce 500ms ease 1; }
+
+body.stuck .wire     { stroke: #ff9d4a; }
+body.stuck #clip     { animation: bounce 900ms ease infinite; }
+
+body.done .wire      { stroke: #52d98a; }
+body.done #clip      { animation: bounce 400ms ease 1; }
+
+@keyframes blink  { 0%, 94%, 100% { opacity: 1; } 96% { opacity: 0; } }
+@keyframes pulse  { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes work   { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-9px); } }
+
+/* ─── the panel (spec §9.1) ────────────────────────────────────────────────
+   Docked to the clip, not a speech bubble: the Submit gate has to show a
+   provenance diff, and a bubble cannot grow. */
+#panel {
+  position: absolute;
+  right: 72px;
+  bottom: 18px;
+  width: 372px;
+  max-height: 520px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(24, 26, 33, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+#panel[hidden] { display: none; }
+
+#panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  font-size: 12px;
+}
+#close {
+  background: none; border: 0; color: #8b90a0;
+  font-size: 17px; line-height: 1; cursor: pointer;
+}
+#close:hover { color: #e8eaf0; }
+
+#ask { display: flex; gap: 6px; padding: 10px 12px; }
+#goal {
+  flex: 1; padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px; color: #e8eaf0; font: inherit;
+}
+#goal:focus { outline: none; border-color: #7cc4ff; }
+#look {
+  padding: 7px 11px; border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06); border-radius: 7px;
+  color: #c9ced8; font: inherit; cursor: pointer;
+}
+#look:hover { background: rgba(255, 255, 255, 0.12); }
+
+#steps {
+  list-style: none; overflow-y: auto; padding: 0 12px 10px;
+  max-height: 220px; font-size: 12px;
+}
+#steps li { display: flex; gap: 7px; padding: 3px 0; color: #b6bcc9; }
+#steps li .mark { flex: none; width: 12px; }
+#steps li.ok   .mark { color: #52d98a; }
+#steps li.bad  .mark { color: #ff9d4a; }
+#steps li .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── the Submit gate (spec §9.5) ──────────────────────────────────────────
+   Grouped by provenance. Generated and unknown values are expanded because
+   they are what can hurt you; profile values collapse to one line with a
+   count, because reading sixteen correct rows to find two risky ones is how a
+   gate stops being read at all. */
+#gate {
+  border-top: 1px solid rgba(200, 120, 40, 0.4);
+  background: rgba(58, 42, 26, 0.55);
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+#gate[hidden] { display: none; }
+#gate-head { color: #ffd489; font-weight: 600; margin-bottom: 8px; }
+
+.group { margin-bottom: 8px; }
+.group-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 8px; border-radius: 6px;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.group.warn  .group-head { background: rgba(200, 120, 40, 0.2); color: #ffc266; }
+.group.safe  .group-head { background: rgba(255, 255, 255, 0.05); color: #8b90a0; }
+
+.item {
+  padding: 6px 9px; margin-top: 5px; border-radius: 0 5px 5px 0;
+  background: rgba(200, 120, 40, 0.08); border-left: 2px solid #a8762a;
+  font-size: 12px;
+}
+.group.safe .item {
+  background: rgba(255, 255, 255, 0.04); border-left-color: rgba(255, 255, 255, 0.15);
+}
+.item .field {
+  display: block; color: #8b90a0; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;
+}
+
+#gate-actions { display: flex; gap: 7px; margin-top: 10px; }
+#approve {
+  background: #2f6fd0; color: #fff; border: 0;
+  padding: 7px 16px; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer;
+}
+#reject {
+  background: none; border: 0; color: #9aa2b4;
+  padding: 7px 12px; font: inherit; cursor: pointer;
+}
+#reject:hover { color: #e8eaf0; }

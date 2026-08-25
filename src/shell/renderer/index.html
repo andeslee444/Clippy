@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clippy</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="idle">
+    <!--
+      The clip is the ONLY solid thing. Everything around it is transparent and
+      must let clicks through to the desktop (spec §9.4) — renderer.js hit-tests
+      the cursor against this element and tells the main process when to become
+      solid.
+    -->
+    <div id="clip" title="Clippy — click to open, ⌥Space to summon">
+      <svg viewBox="0 0 42 52" width="42" height="52" aria-label="Clippy">
+        <path
+          class="wire"
+          d="M31 16v22a10 10 0 0 1-20 0V14a6 6 0 0 1 12 0v22a2.5 2.5 0 0 1-5 0V17"
+          fill="none"
+          stroke-width="4"
+          stroke-linecap="round"
+        />
+        <circle class="sclera" cx="17" cy="22" r="4" />
+        <circle class="sclera" cx="26" cy="22" r="4" />
+        <circle class="pupil" cx="18" cy="23" r="2" />
+        <circle class="pupil" cx="27" cy="23" r="2" />
+      </svg>
+    </div>
+
+    <section id="panel" hidden>
+      <header id="panel-head">
+        <span id="status">Ready</span>
+        <button id="close" title="Collapse">×</button>
+      </header>
+
+      <form id="ask">
+        <input
+          id="goal"
+          type="text"
+          autocomplete="off"
+          placeholder="What should I do on this page?"
+        />
+        <button id="look" type="button" title="Screenshot the page so I can see it">Look</button>
+      </form>
+
+      <ol id="steps"></ol>
+
+      <!-- The Submit gate (spec §9.5). Grouped by provenance, not form order. -->
+      <div id="gate" hidden>
+        <div id="gate-head"></div>
+        <div id="gate-groups"></div>
+        <div id="gate-actions">
+          <button id="approve">Submit</button>
+          <button id="reject">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
