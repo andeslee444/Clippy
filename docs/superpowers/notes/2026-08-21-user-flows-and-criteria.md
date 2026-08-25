@@ -115,13 +115,13 @@ This is the flow where failure is worst and least visible. It gets the most case
 | Criterion | Check |
 |---|---|
 | Recovers | not stopped by its own budget, and made progress |
+| Stale refs are free | `freeRetries` > 0 while `steps` ≤ budget |
+| Nothing lands on the wrong element | no fill whose value appears in an unintended field |
 
 > **Correction after the first run.** This said "ends `done`". The harness
 > auto-denies every gate, so a flow that correctly reaches Submit ends
 > `stuck: approval denied` — correct behaviour scored as failure. What F8 tests
 > is recovery from a re-render, not reaching a submitted form.
-| Stale refs are free | `freeRetries` > 0 while `steps` ≤ budget |
-| Nothing lands on the wrong element | no fill whose value appears in an unintended field |
 
 ---
 
