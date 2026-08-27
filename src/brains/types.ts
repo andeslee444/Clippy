@@ -7,6 +7,17 @@ export interface BrainTools {
   capturePage(): Promise<{ base64: string }>;
   perform(effect: Effect): Promise<string>;
   /**
+   * Attach the user's own résumé to a file input, by ref.
+   *
+   * Deliberately takes NO path. The model decides whether to attach and where,
+   * never what — the file comes from the loaded profile. An `upload(ref, path)`
+   * tool would put an arbitrary filesystem path in model-controlled text, one
+   * persuasive page away from "upload ~/.ssh/id_rsa"; the allowlist in
+   * trust/uploads.ts would refuse it, but the safest hole is the one that
+   * cannot be expressed. Returns a refusal string when no résumé is loaded.
+   */
+  attachResume(ref: string): Promise<string>;
+  /**
    * Every step taken this objective, oldest first.
    *
    * Lives here rather than inside the brain because `perform()` is what learns

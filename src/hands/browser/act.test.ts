@@ -1,7 +1,18 @@
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import { StaleRefError, SubmitCapableError, performEffect } from "./act.js";
 
-function fakePage(opts: { found?: boolean; submitCapable?: boolean; swallowsFill?: boolean } = {}) {
+function fakePage(
+  opts: {
+    found?: boolean;
+    submitCapable?: boolean;
+    swallowsFill?: boolean;
+    /** Validation messages the form shows after a submit. Empty = accepted. */
+    rejects?: string[];
+  } = {},
+) {
   const found = opts.found ?? true;
   const calls: string[] = [];
   const locator = {
@@ -19,6 +30,8 @@ function fakePage(opts: { found?: boolean; submitCapable?: boolean; swallowsFill
   return {
     page: {
       locator: locatorFn,
+      // performEffect calls this after a submit to see whether the form took it.
+      evaluate: vi.fn(async () => opts.rejects ?? []),
       goto: vi.fn(async (u: string) => { calls.push(`goto:${u}`); }),
       waitForLoadState: vi.fn(async () => {}),
       waitForTimeout: vi.fn(async () => {}),
@@ -52,9 +65,46 @@ describe("performEffect", () => {
     expect(s.calls).toContain("select:Yes");
 
     const u = fakePage();
-    const path = `${process.cwd()}/documents/cv.docx`;
-    await performEffect(u.page, { kind: "upload", ref: "g1-r5", path });
-    expect(u.calls).toContain(`upload:${path}`);
+    const dir = mkdtempSync(join(tmpdir(), "clippy-cv-"));
+    const path = join(dir, "cv.docx");
+    writeFileSync(path, "cv");
+    process.env.CLIPPY_UPLOAD_ROOTS = dir;
+    try {
+      await performEffect(u.page, { kind: "upload", ref: "g1-r5", path });
+      // The RESOLVED path reaches the browser — on macOS /var is a symlink to
+      // /private/var, so this is not the string that went in.
+      expect(u.calls.some((c) => c.startsWith("upload:") && c.endsWith("cv.docx"))).toBe(true);
+    } finally {
+      delete process.env.CLIPPY_UPLOAD_ROOTS;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an upload from outside the allowed folders", async () => {
+    const u = fakePage();
+    const dir = mkdtempSync(join(tmpdir(), "clippy-allowed-"));
+    process.env.CLIPPY_UPLOAD_ROOTS = dir;
+    try {
+      // Either layer may catch it, and the schema gets there first — it
+      // refuses on the path alone, before anything touches the filesystem.
+      // The test pins the OUTCOME (no upload happened), not which check won.
+      await expect(
+        performEffect(u.page, { kind: "upload", ref: "g1-r5", path: "/etc/hosts" }),
+      ).rejects.toThrow(/uploads must live under|refused to upload/);
+      expect(u.calls.some((c) => c.startsWith("upload:"))).toBe(false);
+    } finally {
+      delete process.env.CLIPPY_UPLOAD_ROOTS;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a submit the form rejected as a failure, not a success", async () => {
+    // The click succeeds; the form refuses it. Before this the outcome was
+    // `ok`, and the model told the user it had applied to the job.
+    const r = fakePage({ submitCapable: true, rejects: ["Resume/CV is required."] });
+    await expect(performEffect(r.page, { kind: "submit", ref: "g1-r1" })).rejects.toThrow(
+      /rejected the submission.*Resume\/CV is required/,
+    );
   });
 
   it("throws StaleRefError when the ref is not on the page", async () => {

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
@@ -104,4 +105,21 @@ export async function loadProfile(path: string): Promise<Profile> {
 export async function saveProfile(path: string, profile: Profile): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(ProfileSchema.parse(profile), null, 2), "utf8");
+}
+
+/**
+ * The file to attach to an application, from the document the profile was built
+ * from.
+ *
+ * Prefers a PDF sibling when one exists. Résumés are commonly kept as a .docx
+ * that is exported to .pdf, `ingest` is usually pointed at whichever was handy,
+ * and the PDF is the one that survives an applicant tracking system with its
+ * layout intact. Returns undefined when no source document is recorded, so the
+ * caller refuses rather than inventing a path.
+ */
+export function resumePathOf(profile: Profile): string | undefined {
+  const source = profile.sourceDocument;
+  if (!source) return undefined;
+  const pdf = source.replace(/\.(docx?|rtf|txt|pages)$/i, ".pdf");
+  return pdf !== source && existsSync(pdf) ? pdf : source;
 }

@@ -9,6 +9,7 @@ const tools = (results: string[]): BrainTools => {
     steps: [],
     readPage: async () => 'g1-r0 button "Apply"',
     capturePage: async () => ({ base64: "" }),
+    attachResume: async () => "ok",
     perform: async () => results[i++] ?? "ok — done",
   };
 };

@@ -11,7 +11,7 @@ import { makeTools } from "../brains/tools.js";
 import { ClaudeActBrain } from "../brains/act-brain.js";
 import { OpenAICompatBrain } from "../brains/openai-brain.js";
 import { buildGateView } from "./gate-view.js";
-import { loadProfile, factsOf } from "../memory/profile.js";
+import { loadProfile, factsOf, resumePathOf } from "../memory/profile.js";
 import { renderProfileForModel } from "../memory/render.js";
 import { checkIntegrity, explain } from "../trust/integrity.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
@@ -121,6 +121,7 @@ async function main(): Promise<void> {
   const context = profile ? renderProfileForModel(profile) : undefined;
 
   const tools = makeTools({
+  resumePath: profile ? resumePathOf(profile) : undefined,
     facts,
     runEffect: (e) => executor.runEffect(e),
     readPage: async () =>

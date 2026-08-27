@@ -15,7 +15,7 @@ import { OpenAICompatBrain } from "../brains/openai-brain.js";
 import type { ActBrain } from "../brains/types.js";
 import { DEFAULT_OBJECTIVE, type StepRecord } from "../orchestrator/types.js";
 import { ingestResume, draftToProfile } from "../hands/resume/ingest.js";
-import { loadProfile, saveProfile, factsOf, type Profile } from "../memory/profile.js";
+import { loadProfile, saveProfile, factsOf, resumePathOf, type Profile } from "../memory/profile.js";
 import { renderProfileForModel } from "../memory/render.js";
 import { profileWarnings } from "../memory/normalise.js";
 import { JenovaKnowBrain } from "../brains/know-brain.js";
@@ -137,6 +137,7 @@ async function currentPosting(): Promise<string> {
 
 const steps: StepRecord[] = [];
 const brainTools = makeTools({
+  resumePath: profile ? resumePathOf(profile) : undefined,
   facts: await loadProfile(PROFILE_PATH).then(factsOf).catch(() => undefined),
   runEffect: (effect) => executor.runEffect(effect),
   readPage: async () => {

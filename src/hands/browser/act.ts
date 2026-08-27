@@ -1,3 +1,4 @@
+import { assertUploadAllowed } from "../../trust/uploads.js";
 import type { Locator, Page } from "playwright-core";
 import { parseEffect } from "../schema.js";
 import type { Effect, ElementFacts, Ref } from "../types.js";
@@ -81,10 +82,70 @@ export async function performEffect(page: Page, raw: Effect): Promise<void> {
       await selectAnything(page, locator, effect.value, effect.ref);
       break;
     case "upload":
-      await locator.setInputFiles(effect.path);
+      // The RESOLVED path is uploaded, never `effect.path` — see uploads.ts.
+      await locator.setInputFiles(assertUploadAllowed(effect.path));
       break;
   }
   await settle(page);
+  if (effect.kind === "submit") await verifySubmitted(page);
+}
+
+/**
+ * Rejected by the form's own validation. The click worked; the submission did not.
+ */
+export class SubmitRejectedError extends Error {
+  constructor(problems: string[]) {
+    super(`the form rejected the submission: ${problems.join("; ")}`);
+    this.name = "SubmitRejectedError";
+  }
+}
+
+/** Phrasings a form uses to say a field is not acceptable. */
+const VALIDATION =
+  /\b(is required|are required|please (enter|select|provide|choose)|must be|cannot be (blank|empty)|invalid)\b|^select (a|an|your)\b/i;
+
+/**
+ * A submit the form rejected is a FAILURE, not a success.
+ *
+ * `fill` has had this since a 40-step loop was traced to fills that returned ok
+ * having changed nothing. `submit` did not, and the consequence was worse: a
+ * real application to a real posting reported DONE, and the model told the user
+ * it had applied. The form had refused it — no résumé attached, location
+ * unset — and every layer above believed the click.
+ *
+ * Two independent signals, because forms differ in which they use:
+ *
+ *   - `aria-invalid="true"`, which the form sets on the offending controls.
+ *   - A short, visible message in the form's own validation phrasing.
+ *
+ * Both are read AFTER settle, so a successful submit that navigated to a
+ * confirmation page has no controls left to be invalid and reports clean. The
+ * length cap keeps the page's legal boilerplate — which contains the word
+ * "required" in an unrelated sense — out of the signal.
+ */
+async function verifySubmitted(page: Page): Promise<void> {
+  const problems = await page.evaluate((pattern) => {
+    const re = new RegExp(pattern.source, pattern.flags);
+    const seen = (e: Element) =>
+      (e as HTMLElement).offsetParent !== null || e.getClientRects().length > 0;
+
+    const invalid: string[] = [];
+    for (const el of document.querySelectorAll('[aria-invalid="true"]')) {
+      const name = el.getAttribute("aria-label") ?? el.getAttribute("name") ?? el.id;
+      if (name) invalid.push(`${name} was not accepted`);
+    }
+
+    const messages: string[] = [];
+    for (const el of document.querySelectorAll('[role="alert"], [class*="error" i]')) {
+      if (!seen(el)) continue;
+      const text = (el.textContent ?? "").trim();
+      if (text && text.length <= 160 && re.test(text)) messages.push(text);
+    }
+
+    return invalid.length || messages.length ? [...new Set([...messages, ...invalid])].slice(0, 10) : [];
+  }, { source: VALIDATION.source, flags: VALIDATION.flags });
+
+  if (problems.length > 0) throw new SubmitRejectedError(problems);
 }
 
 /**

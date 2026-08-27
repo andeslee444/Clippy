@@ -34,6 +34,7 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   { name: "submit", description: "Submit the form. Always asks the human for approval first, and may be declined.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
+  { name: "attach_resume", description: "Attach the person's own resume/CV to a file input, by ref. Takes no filename — the file comes from their profile. Use this whenever a form has a resume or CV upload; most applications reject a submission without one.", input_schema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false } },
 ];
 
 /** Sentinel the dispatcher returns so the loop can end the run as stuck. */
@@ -181,6 +182,8 @@ export class ClaudeActBrain implements ActBrain {
           return await tools.perform({ kind: "click", ref: RefArg.parse(call.input).ref });
         case "submit":
           return await tools.perform({ kind: "submit", ref: RefArg.parse(call.input).ref });
+        case "attach_resume":
+          return await tools.attachResume(RefArg.parse(call.input).ref);
         default:
           return `ERROR: unknown tool ${call.name}`;
       }

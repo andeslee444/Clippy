@@ -13,6 +13,11 @@ export interface ToolDeps {
    * Absent means every value shows as `unknown`, which is the honest default.
    */
   facts?: ProfileFacts;
+  /**
+   * Path to the user's résumé, from the loaded profile. Absent means
+   * `attach_resume` refuses rather than guessing at a file.
+   */
+  resumePath?: string;
   readPage: () => Promise<string>;
   capturePage: () => Promise<{ base64: string }>;
   onStep: (record: StepRecord) => void;
@@ -34,6 +39,16 @@ export function makeTools(deps: ToolDeps): BrainTools {
     steps,
     readPage: deps.readPage,
     capturePage: deps.capturePage,
+
+    async attachResume(ref: string): Promise<string> {
+      if (!deps.resumePath) {
+        return "ERROR: no résumé on file — run `ingest <path>` first, or ask the person to attach it.";
+      }
+      // Routed through perform() so it is recorded, gated, and provenance-
+      // stamped like any other effect. A quiet side channel to the executor is
+      // how an action ends up outside the audit log.
+      return await this.perform({ kind: "upload", ref, path: deps.resumePath });
+    },
 
     async perform(raw: Effect): Promise<string> {
       // Stamp provenance BEFORE executing, so the record the gate reads is the

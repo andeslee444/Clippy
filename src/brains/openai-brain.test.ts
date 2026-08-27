@@ -13,6 +13,7 @@ const tools = (): BrainTools & { calls: string[] } => {
     steps: [],
     readPage: async () => { calls.push("read"); return 'g1-r0 textbox "First Name*"'; },
     capturePage: async () => ({ base64: "" }),
+    attachResume: async () => "ok",
     perform: async (e) => {
       calls.push(`${e.kind}`);
       // Mirror makeTools: every perform appends a StepRecord. Without this the

@@ -49,8 +49,25 @@ describe("parseEffect", () => {
   });
 
   it("accepts an upload inside the allowed directory", () => {
-    const ok = parseEffect({ kind: "upload", ref: "g1-r1", path: `${process.cwd()}/documents/cv.docx` });
-    expect(ok.kind).toBe("upload");
+    // The roots are read at call time, so the test states its own.
+    process.env.CLIPPY_UPLOAD_ROOTS = "/tmp/clippy-docs";
+    try {
+      const ok = parseEffect({ kind: "upload", ref: "g1-r1", path: "/tmp/clippy-docs/cv.docx" });
+      expect(ok.kind).toBe("upload");
+    } finally {
+      delete process.env.CLIPPY_UPLOAD_ROOTS;
+    }
+  });
+
+  it("rejects an upload from outside the allowed directory", () => {
+    process.env.CLIPPY_UPLOAD_ROOTS = "/tmp/clippy-docs";
+    try {
+      expect(() => parseEffect({ kind: "upload", ref: "g1-r1", path: "/etc/hosts" })).toThrow();
+      // A sibling sharing the prefix is outside, and the separator says so.
+      expect(() => parseEffect({ kind: "upload", ref: "g1-r1", path: "/tmp/clippy-docs-secret/x" })).toThrow();
+    } finally {
+      delete process.env.CLIPPY_UPLOAD_ROOTS;
+    }
   });
 
   it("rejects an unknown kind", () => {
