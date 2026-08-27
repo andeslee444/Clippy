@@ -139,15 +139,33 @@ async function selectAnything(
   // Custom widget: click it, type to filter, then click the matching option.
   await locator.click().catch(() => undefined);
   await locator.fill(value).catch(() => undefined);
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(500);
 
-  const option = page
-    .locator('[role="option"], [role="listbox"] li, [class*="option"]')
-    .filter({ hasText: value })
-    .first();
+  // Scope to the listbox that just OPENED, not the whole page. A real posting
+  // had 244 elements with role="option" — the job description is full of <li>
+  // bullets and every combobox renders its options into the DOM.
+  const openList = page
+    .locator('[role="listbox"], [role="dialog"][aria-modal="true"]')
+    .locator("visible=true")
+    .last();
+  const scope = (await openList.count()) > 0 ? openList : page;
 
-  if ((await option.count()) > 0) {
-    await option.click({ timeout: 3_000 });
+  // EXACT match, never substring. Playwright's hasText is a substring test, and
+  // the value that broke this was "No" — a substring of "Not", "Now", "North",
+  // and a third of the posting. It matched a job-description bullet, took the
+  // first in DOM order, and timed out clicking something that is not an option.
+  // A longer value would have worked by luck, which is how this survives
+  // casual testing.
+  const exact = scope.getByRole("option", { name: value, exact: true }).first();
+  if ((await exact.count()) > 0) {
+    await exact.click({ timeout: 5_000 });
+    return;
+  }
+
+  // Looser fallback, still scoped to the open list rather than the document.
+  const loose = scope.getByRole("option", { name: new RegExp(`^\\s*${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i") }).first();
+  if ((await loose.count()) > 0) {
+    await loose.click({ timeout: 5_000 });
     return;
   }
 

@@ -109,6 +109,36 @@
     return false;
   }
 
+  /*
+   * What a custom combobox is DISPLAYING as its chosen value.
+   *
+   * react-select — which Greenhouse, Lever and most ATS forms use — keeps its
+   * <input> empty and renders the selection into a sibling div. So `.value` is
+   * "" no matter what is chosen, the snapshot showed an empty field, and the
+   * model re-selected the same dropdown over and over: 27 selects across 18
+   * page reads on a real posting before the step budget stopped it.
+   *
+   * A tool result that cannot show work being done is as bad as one that lies
+   * about it — the model has no way to know it succeeded.
+   */
+  function chosenOption(el) {
+    // Only form CONTROLS. Walking up from a button found the nearest select in
+    // the page and reported its value — "Back to jobs" and "Submit application"
+    // both came back holding a country code.
+    var tag = el.tagName.toLowerCase();
+    if (tag !== "input" && tag !== "select" && tag !== "textarea") return "";
+
+    // Scoped to this control's OWN container via closest(), never a walk up N
+    // ancestors — react-select nests the input inside the control, so closest
+    // lands exactly on the right widget and cannot wander into a neighbour.
+    if (!el.closest) return "";
+    var control = el.closest('[class*="select__control"], [class*="-control"]');
+    if (!control) return "";
+
+    var picked = control.querySelector('[class*="ingleValue"], [class*="ingle-value"]');
+    return picked && picked.textContent ? picked.textContent.trim() : "";
+  }
+
   function isDisabled(el) {
     try {
       return el.matches(":disabled");
@@ -143,6 +173,7 @@
     var rawValue = el.value !== undefined && el.value !== null
       ? el.value
       : el.getAttribute("value");
+    if (!rawValue) rawValue = chosenOption(el);
     var value = secret ? (rawValue ? REDACTED : undefined) : (sanitize(rawValue) || undefined);
     var role = roleOf(el);
 
