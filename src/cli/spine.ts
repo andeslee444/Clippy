@@ -1,3 +1,4 @@
+import { buildGateView } from "../shell/gate-view.js";
 import { createInterface } from "node:readline/promises";
 import { join } from "node:path";
 import { connect, launchChrome } from "../hands/browser/connect.js";
@@ -63,6 +64,31 @@ const executor = new GatedExecutor({
         : "irreversible or outward-facing";
     console.log(`\n⏸  GATED: ${effect.kind} — ${why}`);
     console.log(`   ${JSON.stringify(effect)}`);
+
+    // Show WHAT is about to be sent, not just that something is.
+    // Printing the effect alone told the reader a submit was pending and
+    // nothing about the sixteen values riding on it — which is not a decision
+    // anyone can actually make. Reloaded per gate: a gate blocks on a human,
+    // so one file read costs nothing next to the wait.
+    const gateFacts = await loadProfile(PROFILE_PATH).then(factsOf).catch(() => undefined);
+    const view = buildGateView(steps, gateFacts);
+    if (view.total > 0) {
+      console.log(
+        `   ${view.total} field(s) filled` +
+          (view.needsReview > 0 ? `, ${view.needsReview} needing review` : ""),
+      );
+      for (const group of view.groups) {
+        console.log(`   ── ${group.label} (${group.items.length})`);
+        for (const item of group.items) {
+          // Collapsed groups print one line each; expanded ones print in full,
+          // because a truncated generated answer cannot be vetted.
+          const value = group.expanded ? item.value : item.value.slice(0, 72);
+          console.log(`      ${item.field}: ${value}`);
+          if (item.warning) console.log(`      ⚠ ${item.warning}`);
+        }
+      }
+    }
+
     const answer = await rl.question("   approve? [y/N] ");
     return answer.trim().toLowerCase() === "y";
   },

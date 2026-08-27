@@ -244,7 +244,12 @@ window.clippy.onGate(({ effect, view }) => {
       // inventing facts about you, not to overrule you about your own history.
       const warn = document.createElement("div");
       warn.className = "warn-line";
-      warn.hidden = true;
+      // Seeded from the view, not left blank until someone edits the field.
+      // This line used to appear only AFTER an edit, which meant the one
+      // reader who never touched anything — the one clicking Approve — saw no
+      // warnings at all.
+      warn.textContent = item.warning ?? "";
+      warn.hidden = !item.warning;
 
       el.append(field, value, warn);
       body.append(el);

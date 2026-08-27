@@ -1,13 +1,40 @@
+import { checkIntegrity, explain } from "../trust/integrity.js";
+import type { ProfileFacts } from "../memory/profile.js";
 import type { StepRecord } from "../orchestrator/types.js";
 import type { Provenance } from "../hands/types.js";
 
 export type GateProvenance = Provenance | "unknown";
+
+/**
+ * Runs §7.4 and renders the failure, or nothing when it passes.
+ *
+ * Short values are skipped: a one-word answer has no room for a fabricated
+ * claim, and running the capital-run tokenizer over "Yes" or a city name
+ * produces noise that trains the reader to skip the warnings that matter.
+ */
+function integrityWarning(
+  value: string,
+  facts: ProfileFacts | undefined,
+  posting: string,
+): string | undefined {
+  // No profile means nothing to check against — every capitalised word would
+  // be a violation, which is worse than silence.
+  if (!facts) return undefined;
+  if (value.trim().length < 40) return undefined;
+  const verdict = checkIntegrity(value, facts, [], posting);
+  return verdict.ok ? undefined : explain(verdict);
+}
 
 export interface GateItem {
   field: string;
   value: string;
   /** Needed so an edit at the gate can re-fill this exact element (§9.5). */
   ref: string;
+  /**
+   * §7.4 result for this value, when it failed. Computed HERE, at the moment
+   * the gate is built, because that is the only moment a human is looking.
+   */
+  warning?: string;
 }
 
 export interface GateGroup {
@@ -42,7 +69,22 @@ const ORDER: GateProvenance[] = ["generated", "unknown", "human", "profile"];
  * profile collapse to a single line with a count, because reading sixteen
  * correct rows to find two risky ones is how a gate stops being read at all.
  */
-export function buildGateView(steps: StepRecord[]): GateView {
+export function buildGateView(
+  steps: StepRecord[],
+  /**
+   * Required, not optional, and deliberately so.
+   *
+   * checkIntegrity was written, tested, and wired to a renderer that displays
+   * its output — and on the path that matters, nothing called it. A real
+   * application reached this gate showing 900 words of generated prose with no
+   * warnings, because the only call sites were the `draft` tool and the edit
+   * handler, and the model had used `fill`. An optional parameter would have
+   * reproduced that bug exactly: the call site that forgets is the call site
+   * that needs it. Making it required means the compiler asks the question.
+   */
+  facts: ProfileFacts | undefined,
+  posting = "",
+): GateView {
   const buckets = new Map<GateProvenance, GateItem[]>();
 
   for (const step of steps) {
@@ -52,7 +94,12 @@ export function buildGateView(steps: StepRecord[]): GateView {
     // been shown to come from anywhere trustworthy.
     const p: GateProvenance = a.provenance ?? "unknown";
     const list = buckets.get(p) ?? [];
-    list.push({ field: step.effect, value: a.value, ref: a.ref });
+    // Only values the model produced are checked. A profile value that fails
+    // §7.4 would mean the profile disagrees with itself, which is a different
+    // problem and not one to raise over a Submit button.
+    const warning =
+      p === "profile" || p === "human" ? undefined : integrityWarning(a.value, facts, posting);
+    list.push({ field: step.effect, value: a.value, ref: a.ref, ...(warning ? { warning } : {}) });
     buckets.set(p, list);
   }
 

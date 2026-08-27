@@ -180,3 +180,43 @@ describe("checkIntegrity — claims about the employer vs the candidate", () => 
 
 
 
+
+/*
+ * Regressions from one real application to a real posting. The generated answer
+ * was truthful in every particular and the check reported eight violations —
+ * all of them artifacts of how the text was cut into entities, none of them a
+ * claim. The last test in this block is the one that matters: it pins that the
+ * fixes narrowed the TOKENIZER and did not loosen the CHECK.
+ */
+describe("checkIntegrity — tokenizer artifacts are not fabrication", () => {
+  it("accepts a possessive form of a known organisation", () => {
+    expect(check("I supported Acme Corp's platform migration.").ok).toBe(true);
+  });
+
+  it("accepts a possessive written with a curly apostrophe", () => {
+    expect(check("I supported Acme Corp’s platform migration.").ok).toBe(true);
+  });
+
+  it("does not absorb the pronoun I into the preceding organisation", () => {
+    // Tokenises as "Acme Corp I" — a company that has never existed.
+    expect(check("At Acme Corp I led the platform migration.").ok).toBe(true);
+  });
+
+  it("treats a lettered list marker as the start of a clause", () => {
+    expect(check("(a) Deal workflows: I led a migration. (b) Building: I shipped it.").ok).toBe(true);
+  });
+
+  it("ignores spacing differences in an organisation name", () => {
+    // The profile says "Acme Corp"; the sentence says "AcmeCorp".
+    expect(check("Ran diligence on AcmeCorp during the migration.").ok).toBe(true);
+  });
+
+  it("STILL rejects an invented organisation under every variant", () => {
+    // The point of the four fixes above is that this line does not move.
+    expect(check("I led the migration at Globex.").ok).toBe(false);
+    expect(check("I led the migration at Globex's platform team.").ok).toBe(false);
+    expect(check("At Globex I led the migration.").ok).toBe(false);
+    expect(check("(a) At Globex, I led the migration.").ok).toBe(false);
+    expect(check("Ran diligence on GlobexIndustries.").ok).toBe(false);
+  });
+});

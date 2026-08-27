@@ -45,10 +45,41 @@ const CAPRUN = /\b[A-Z][a-zA-Z&.'-]*(?:\s+(?:of|and|the)?\s*[A-Z][a-zA-Z&.'-]*)*
 /** Is this match at the start of a sentence? Those are prose, not organisations. */
 function sentenceInitial(text: string, index: number): boolean {
   const before = text.slice(0, index).replace(/\s+$/, "");
-  return before === "" || /[.!?:;]$/.test(before);
+  // A list marker opens a clause exactly as a full stop does. Without this,
+  // an answer written in "(a) … (b) …" sections reported "Deal" and "Building"
+  // as unverifiable organisations — one violation per section, all noise.
+  return (
+    before === "" ||
+    /[.!?:;]$/.test(before) ||
+    /(?:^|\s)(?:\(?[a-z0-9]\)|[-•*]|\d+\.)$/.test(before)
+  );
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[.,]$/, "").trim();
+
+/** Whitespace-free form, so "TradingView" and "Trading View" compare equal. */
+const squash = (s: string) => s.replace(/\s+/g, "");
+
+/**
+ * Spellings of one entity that should all resolve to the same lookup.
+ *
+ * Every entry NARROWS the tokenizer; none loosens the check. An organisation
+ * absent from the profile, the posting, and the allow-list still fails all of
+ * them under every variant. The distinction is the whole point: the other way
+ * to quieten a noisy validator is to relax what counts as a match, and a
+ * fail-closed check that cries wolf eight times per real finding has already
+ * failed open no matter what its code says.
+ */
+function variantsOf(lower: string): string[] {
+  const out = new Set<string>([lower]);
+  // Possessive: the profile holds "Nasdaq", the sentence says "Nasdaq's".
+  // Both apostrophes — resumes carry the curly one, typed prose the straight.
+  out.add(lower.replace(/['\u2019]s\b/g, "").trim());
+  // A trailing lone "I" is the English pronoun swallowed by the capital run:
+  // "at Bloomberg I did credit analysis" tokenises as "Bloomberg I".
+  for (const v of [...out]) out.add(v.replace(/\s+i$/, "").trim());
+  return [...out].filter(Boolean);
+}
 
 /**
  * Verify that every checkable claim in `text` appears in the profile (spec §7.4).
@@ -104,6 +135,8 @@ export function checkIntegrity(
 ): IntegrityResult {
   const known = alsoKnown.map((k) => k.toLowerCase());
   const postingText = posting.toLowerCase();
+  // Hoisted: squashing per candidate would redo this for every capital run.
+  const squashedCorpus = squash(facts.corpus);
   const violations: Violation[] = [];
 
   for (const year of text.match(YEAR) ?? []) {
@@ -136,12 +169,17 @@ export function checkIntegrity(
     // to prevent.
     if (words.length === 1 && sentenceInitial(text, match.index)) continue;
 
-    const recognised =
-      known.some((k) => lower === k || lower.includes(k) || k.includes(lower)) ||
-      (postingText !== "" && postingText.includes(lower)) ||
-      facts.organisations.some((o) => o === lower || lower.includes(o) || o.includes(lower)) ||
-      facts.titles.some((t) => t === lower || lower.includes(t) || t.includes(lower)) ||
-      facts.corpus.includes(lower);
+    const recognised = variantsOf(lower).some(
+      (v) =>
+        known.some((k) => v === k || v.includes(k) || k.includes(v)) ||
+        (postingText !== "" && postingText.includes(v)) ||
+        facts.organisations.some((o) => o === v || v.includes(o) || o.includes(v)) ||
+        facts.titles.some((t) => t === v || v.includes(t) || t.includes(v)) ||
+        facts.corpus.includes(v) ||
+        // Spacing is not identity: the resume writes "Trading View", the
+        // sentence writes "TradingView".
+        squashedCorpus.includes(squash(v)),
+    );
 
     if (!recognised) violations.push({ kind: "organisation", value: phrase });
   }

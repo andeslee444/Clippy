@@ -95,10 +95,17 @@ async function main(): Promise<void> {
 
   const audit = new AuditLog(join(process.cwd(), "runs", `shell-${Date.now()}.jsonl`));
 
+  // Loaded before the gate closure below, which reads `facts` — a `const`
+  // declared after its use is a TDZ throw at the worst possible moment.
+  // Optional: without it the gate honestly reports every value as `unknown`
+  // rather than pretending it verified anything.
+  const profile = await loadProfile(join(process.cwd(), "profile.json")).catch(() => null);
+  const facts = profile ? factsOf(profile) : undefined;
+
   /** Blocks until the renderer answers. This is the whole gate integration. */
   const requestApproval = (effect: Effect): Promise<boolean> =>
     new Promise((resolveApproval) => {
-      const view = buildGateView(steps);
+      const view = buildGateView(steps, facts);
       win?.webContents.send("clippy:gate", { effect, view });
       ipcMain.once("clippy:gate-answer", (_e, approved: boolean) => resolveApproval(approved));
     });
@@ -111,10 +118,6 @@ async function main(): Promise<void> {
     requestApproval,
   });
 
-  // Optional: without it the gate honestly reports every value as `unknown`
-  // rather than pretending it verified anything.
-  const profile = await loadProfile(join(process.cwd(), "profile.json")).catch(() => null);
-  const facts = profile ? factsOf(profile) : undefined;
   const context = profile ? renderProfileForModel(profile) : undefined;
 
   const tools = makeTools({
