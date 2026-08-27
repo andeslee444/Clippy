@@ -11,9 +11,12 @@ function fakePage(
     swallowsFill?: boolean;
     /** Validation messages the form shows after a submit. Empty = accepted. */
     rejects?: string[];
+    /** The form accepted it and the browser moved to a confirmation page. */
+    navigatesOnSubmit?: boolean;
   } = {},
 ) {
   const found = opts.found ?? true;
+  let urlChanged = false;
   const calls: string[] = [];
   const locator = {
     count: async () => (found ? 1 : 0),
@@ -32,6 +35,11 @@ function fakePage(
       locator: locatorFn,
       // performEffect calls this after a submit to see whether the form took it.
       evaluate: vi.fn(async () => opts.rejects ?? []),
+      url: vi.fn(() => (urlChanged ? "https://x.test/confirmation" : "https://x.test/apply")),
+      waitForURL: vi.fn(async () => {
+        if (!opts.navigatesOnSubmit) throw new Error("timeout");
+        urlChanged = true;
+      }),
       goto: vi.fn(async (u: string) => { calls.push(`goto:${u}`); }),
       waitForLoadState: vi.fn(async () => {}),
       waitForTimeout: vi.fn(async () => {}),
@@ -96,6 +104,19 @@ describe("performEffect", () => {
       delete process.env.CLIPPY_UPLOAD_ROOTS;
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("treats a navigation away as proof the submit was accepted", async () => {
+    // The old document still holds the PREVIOUS attempt's errors while the
+    // confirmation page loads. Reading them as a rejection told a user their
+    // application had failed when it had been received — and the obvious
+    // response to that is to send it a second time.
+    const okPage = fakePage({
+      submitCapable: true,
+      rejects: ["Please enter your location"],
+      navigatesOnSubmit: true,
+    });
+    await expect(performEffect(okPage.page, { kind: "submit", ref: "g1-r1" })).resolves.toBeUndefined();
   });
 
   it("treats a submit the form rejected as a failure, not a success", async () => {

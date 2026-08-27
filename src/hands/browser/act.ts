@@ -69,9 +69,13 @@ export async function performEffect(page: Page, raw: Effect): Promise<void> {
 
   if (effect.kind === "click" && facts.submitCapable) throw new SubmitCapableError(effect.ref);
 
+  let submittedFrom = "";
   switch (effect.kind) {
     case "click":
     case "submit":
+      // Captured BEFORE the click: a submit that is accepted navigates away,
+      // and that is the only reliable proof of acceptance.
+      submittedFrom = page.url();
       await locator.click();
       break;
     case "fill":
@@ -87,7 +91,7 @@ export async function performEffect(page: Page, raw: Effect): Promise<void> {
       break;
   }
   await settle(page);
-  if (effect.kind === "submit") await verifySubmitted(page);
+  if (effect.kind === "submit") await verifySubmitted(page, submittedFrom);
 }
 
 /**
@@ -123,26 +127,43 @@ const VALIDATION =
  * length cap keeps the page's legal boilerplate — which contains the word
  * "required" in an unrelated sense — out of the signal.
  */
-async function verifySubmitted(page: Page): Promise<void> {
+async function verifySubmitted(page: Page, from: string): Promise<void> {
+  // A submit the form accepts navigates. Wait for that before reading the DOM.
+  //
+  // settle() returns while the OLD document is still on screen, and the old
+  // document still holds the validation errors from the previous attempt. On a
+  // real application this reported "Please enter your location" for a
+  // submission Greenhouse had just accepted — the run ended STUCK, the audit
+  // log recorded four rejections, and the confirmation page was already
+  // loading. A false negative here is not a harmless conservative error: it
+  // reads as "not sent", and the obvious response is to send it again.
+  await page.waitForURL((u) => u.toString() !== from, { timeout: 5_000 }).catch(() => {});
+  if (page.url() !== from) return;
+
+  // NOTHING inside this callback may be a NAMED function. tsx/esbuild compiles
+  // with keepNames, which rewrites `const seen = (e) => …` into
+  // `__name((e) => …, "seen")` — and `__name` does not exist in the browser, so
+  // the call throws ReferenceError at runtime while compiling and unit-testing
+  // cleanly. This is the second time that trap has been sprung here; the first
+  // cost a page script, and this one silently turned every submit into a
+  // failure. Booleans and loops are fine. Named callbacks are not.
   const problems = await page.evaluate((pattern) => {
     const re = new RegExp(pattern.source, pattern.flags);
-    const seen = (e: Element) =>
-      (e as HTMLElement).offsetParent !== null || e.getClientRects().length > 0;
+    const found: string[] = [];
 
-    const invalid: string[] = [];
+    for (const el of document.querySelectorAll('[role="alert"], [class*="error" i]')) {
+      const showing = (el as HTMLElement).offsetParent !== null || el.getClientRects().length > 0;
+      if (!showing) continue;
+      const text = (el.textContent ?? "").trim();
+      if (text && text.length <= 160 && re.test(text)) found.push(text);
+    }
+
     for (const el of document.querySelectorAll('[aria-invalid="true"]')) {
       const name = el.getAttribute("aria-label") ?? el.getAttribute("name") ?? el.id;
-      if (name) invalid.push(`${name} was not accepted`);
+      if (name) found.push(`${name} was not accepted`);
     }
 
-    const messages: string[] = [];
-    for (const el of document.querySelectorAll('[role="alert"], [class*="error" i]')) {
-      if (!seen(el)) continue;
-      const text = (el.textContent ?? "").trim();
-      if (text && text.length <= 160 && re.test(text)) messages.push(text);
-    }
-
-    return invalid.length || messages.length ? [...new Set([...messages, ...invalid])].slice(0, 10) : [];
+    return [...new Set(found)].slice(0, 10);
   }, { source: VALIDATION.source, flags: VALIDATION.flags });
 
   if (problems.length > 0) throw new SubmitRejectedError(problems);
