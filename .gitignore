@@ -6,3 +6,8 @@ dist/
 runs/
 profile.json
 evals/runs/
+
+# Scratch drivers. One of these auto-approved a live Submit gate; they do not
+# belong in the tree where someone could run one by accident.
+_*.mjs
+_*.ts
