@@ -276,3 +276,42 @@ describe("checkIntegrity — an organisation named by its acronym", () => {
     expect(ac("I worked at U Systems.").ok).toBe(false);
   });
 });
+
+describe("checkIntegrity — initialisms and sentence-opening determiners", () => {
+  const degreeFacts = factsOf({
+    name: "A", email: "a@b.c", phone: "", location: "",
+    workAuthorized: true, needsSponsorship: false, salaryExpectation: "", links: {},
+    employers: [{ company: "Bloomberg L.P.", title: "Analyst", start: "2019", end: "2021", bullets: [] }],
+    education: [{ school: "University of Texas at Austin", degree: "BS Computer Science", end: "2017" }],
+    answers: {}, verifiedFields: [],
+  });
+  const d = (t: string) => checkIntegrity(t, degreeFacts);
+
+  it("does not split an initialism across the sentence", () => {
+    // Tokenised as "My B." — an organisation nothing in the text refers to.
+    // Failed exactly one eval run in five, which is how flakes look.
+    expect(d("My B.S. in Computer Science grounds the technical conversations.").ok).toBe(true);
+  });
+
+  it("matches a dotted initialism against the profile's undotted one", () => {
+    expect(d("I hold a B.S. in Computer Science.").ok).toBe(true);
+  });
+
+  it("keeps a company's own initialism together", () => {
+    expect(d("I worked at Bloomberg L.P. on credit analysis.").ok).toBe(true);
+  });
+
+  it("STILL stops a run at a real sentence boundary", () => {
+    // Globex must be MID-sentence: a lone capitalised word opening a sentence
+    // is skipped as prose by design, so putting it first would test the skip
+    // rather than the boundary.
+    const values = d("I used SQL. I then joined Globex in 2019.").violations.map((v) => v.value);
+    expect(values).toContain("Globex");
+    // And the run did not drag the full stop along with it.
+    expect(values.some((v) => v.includes("SQL"))).toBe(false);
+  });
+
+  it("STILL rejects an invented organisation behind a determiner", () => {
+    expect(d("My Globex Industries role taught me a lot.").ok).toBe(false);
+  });
+});

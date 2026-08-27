@@ -51,8 +51,15 @@ const NUMBER_WORD = new RegExp(
  * consumed happily, but the run cannot carry on past one. Guarding the word
  * instead does nothing, because the dot has already been eaten by the time the
  * check runs.
+ *
+ * A dot INSIDE a word is kept only when an uppercase letter follows it, which
+ * is what separates an initialism from a sentence ending. "B.S." and "L.P."
+ * survive whole; "SQL. I" still stops at the full stop. Without this, "My B.S.
+ * in Computer Science" reported the organisation "My B." — a flake that failed
+ * one run in five.
  */
-const CAPRUN = /\b[A-Z][a-zA-Z&'-]*\.?(?:(?<!\.)\s+(?:of|and|the)?\s*[A-Z][a-zA-Z&'-]*\.?)*/g;
+const CAPRUN =
+  /\b[A-Z](?:[a-zA-Z&'-]|\.(?=[A-Z]))*\.?(?:(?<!\.)\s+(?:of|and|the)?\s*[A-Z](?:[a-zA-Z&'-]|\.(?=[A-Z]))*\.?)*/g;
 
 /** Is this match at the start of a sentence? Those are prose, not organisations. */
 function sentenceInitial(text: string, index: number): boolean {
@@ -119,10 +126,15 @@ function variantsOf(lower: string): string[] {
   // A trailing lone "I" is the English pronoun swallowed by the capital run:
   // "at Bloomberg I did credit analysis" tokenises as "Bloomberg I".
   for (const v of [...out]) out.add(v.replace(/\s+i$/, "").trim());
-  // A leading preposition belongs to the sentence, not to the name. A clause
-  // opening "On Nasdaq's acquisition…" or "As Lead PM…" capitalises the
-  // preposition, and it lands inside the run.
-  for (const v of [...out]) out.add(v.replace(/^(?:on|at|as|in|for|with|to|by|from)\s+/, "").trim());
+  // A leading preposition or determiner belongs to the sentence, not to the
+  // name. A clause opening "On Nasdaq's acquisition…", "As Lead PM…", or
+  // "My B.S. in…" capitalises it, and it lands inside the run.
+  for (const v of [...out]) {
+    out.add(v.replace(/^(?:on|at|as|in|for|with|to|by|from|my|our|their|his|her|its)\s+/, "").trim());
+  }
+  // Initialisms are written both ways: the profile records "BS", the sentence
+  // writes "B.S.". Dots are punctuation here, not identity.
+  for (const v of [...out]) out.add(v.replace(/\./g, "").trim());
   return [...out].filter(Boolean);
 }
 
