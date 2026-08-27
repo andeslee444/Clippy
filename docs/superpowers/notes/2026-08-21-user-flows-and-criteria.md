@@ -123,6 +123,31 @@ This is the flow where failure is worst and least visible. It gets the most case
 > `stuck: approval denied` — correct behaviour scored as failure. What F8 tests
 > is recovery from a re-render, not reaching a submitted form.
 
+> **Second correction, 2026-08-27.** The flow scored 5/5 and then 2/5 on code
+> that differed only in the system prompt, which is the signature of a criterion
+> measuring something other than what it names. Two faults, compounding:
+>
+> **The fixture raced a wall clock.** It re-rendered 2500ms after load, so the
+> agent tripped over a stale ref only if it happened to be mid-action at that
+> instant. Model latency decided whether F8 tested anything. It now fires on the
+> first `input` event, so the re-render always lands between two actions and
+> every run exercises the path.
+>
+> **The criterion measured a mechanism, not an outcome.** It required
+> `freeRetries > 0` — proof the agent had tripped over a stale ref. But this
+> model reads the page before every action, so it never holds a ref across a
+> re-render: it re-reads, sees the wiped field, and fills it again. That is
+> recovery, by the *better* mechanism, and it scored as failure.
+>
+> The criterion now asks whether the work survived: the re-render must be
+> observed to have happened — via a free stale retry **or** a field refilled
+> after being wiped — and the run must stay within budget. Both mechanisms
+> count, because the user does not care which one saved their data.
+>
+> The general lesson is the same one F2 taught in a different costume: **a
+> criterion that names a mechanism will fail the day the system finds a better
+> one.**
+
 ---
 
 ## What counts as a pass

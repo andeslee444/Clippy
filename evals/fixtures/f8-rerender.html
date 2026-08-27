@@ -135,9 +135,28 @@
     // discards whatever the user (or agent) had already typed — the worst
     // case, and the one worth testing.
     var pristine = container.innerHTML;
-    setTimeout(function () {
-      container.innerHTML = pristine;
-    }, 2500);
+
+    // Triggered by the FIRST interaction, not by a wall clock.
+    //
+    // This was `setTimeout(…, 2500)`, which made the whole flow a race: the
+    // agent hit a stale ref only if it happened to be acting at t=2500ms.
+    // Whether F8 tested anything therefore depended on model latency, and the
+    // flow scored 5/5 and 2/5 on identical code — a longer system prompt was
+    // enough to move it. A criterion that measures timing luck is worse than
+    // no criterion, because it also fails for unrelated reasons.
+    //
+    // Firing on the first input guarantees exactly one re-render, always
+    // between two of the agent's actions, so every run exercises the recovery
+    // path this fixture exists to test. The short delay lets the fill that
+    // triggered it finish verifying before the DOM is replaced.
+    var fired = false;
+    container.addEventListener('input', function () {
+      if (fired) return;
+      fired = true;
+      setTimeout(function () {
+        container.innerHTML = pristine;
+      }, 120);
+    }, true);
   })();
 </script>
 </body>

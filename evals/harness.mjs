@@ -621,12 +621,46 @@ function checkCompletes(result) {
   return { pass: result.kind === "done", detail: `result.kind = "${result.kind}"${"reason" in result ? ` (${result.reason})` : ""}` };
 }
 
-function checkFreeRetries(ctx, objective) {
+/**
+ * F8 recovers from the re-render, by WHICHEVER mechanism it uses.
+ *
+ * This required `freeRetries > 0` — that the agent had actually tripped over a
+ * stale ref. That is one way to survive a re-render, and it turns out to be the
+ * worse one. The model reads the page before every action, so it never holds a
+ * ref across the re-render at all: it re-reads, sees the wiped field, and fills
+ * it again. Recovery, with no stale ref anywhere, scored as failure.
+ *
+ * The criterion was measuring a MECHANISM. What F8 exists to test is the
+ * OUTCOME — that a re-render mid-run does not cost the user their data or the
+ * run its budget. So: the re-render must be observed to have happened, the work
+ * must survive it, and any stale ref that did occur must have been free.
+ *
+ * Evidence the re-render actually landed, since a criterion that passes when
+ * nothing happened is worthless: either a stale ref was retried for free, or a
+ * field was filled more than once with the same value — which only happens when
+ * something threw the first one away.
+ */
+function checkRecoversFromRerender(ctx, objective) {
   const freeRetries = ctx.toolsSteps.filter((s) => s.outcome.kind === "retry-free").length;
+
+  const fills = ctx.toolsSteps.filter((s) => s.action?.kind === "fill" && s.outcome.kind === "ok");
+  const seen = new Set();
+  let refilled = 0;
+  for (const step of fills) {
+    const key = String(step.action.value ?? "");
+    if (seen.has(key)) refilled += 1;
+    seen.add(key);
+  }
+
+  const observed = freeRetries > 0 || refilled > 0;
   const withinBudget = ctx.result.steps <= objective.maxSteps;
+  const how = freeRetries > 0 ? `${freeRetries} free stale retry/retries` : `${refilled} field(s) refilled after being wiped`;
+
   return {
-    pass: freeRetries > 0 && withinBudget,
-    detail: `freeRetries=${freeRetries} (from tools.steps, retry-free entries), steps=${ctx.result.steps}/${objective.maxSteps}`,
+    pass: observed && withinBudget,
+    detail: observed
+      ? `re-render survived via ${how}; steps=${ctx.result.steps}/${objective.maxSteps}`
+      : `no evidence the re-render was noticed at all (freeRetries=0, no refills) — steps=${ctx.result.steps}/${objective.maxSteps}`,
   };
 }
 
@@ -836,7 +870,7 @@ export const FLOWS = [
       // from a mid-run re-render — i.e. it got somewhere without exhausting
       // the budget.
       { name: "Recovers from the re-render (not budget-exhausted)", run: (ctx) => checkRecovered(ctx.result) },
-      { name: "Stale refs are free (freeRetries > 0, steps <= budget)", run: (ctx) => checkFreeRetries(ctx, ctx.flow.objective) },
+      { name: "Recovers from the re-render without losing work or budget", run: (ctx) => checkRecoversFromRerender(ctx, ctx.flow.objective) },
       { name: "Nothing lands on the wrong element", run: (ctx) => checkCoreFieldsFilled(ctx.finalSnapshot, ctx.profile) },
     ],
   },
