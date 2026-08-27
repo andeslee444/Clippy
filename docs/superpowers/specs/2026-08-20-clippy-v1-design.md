@@ -381,6 +381,38 @@ Stopping is also a design decision. Three warnings remain on that answer — `IB
 would mean fitting the tokenizer to one answer, and a fail-closed check drifts open one reasonable
 accommodation at a time.
 
+#### Three kinds of unverifiable, and only one is a validator problem
+
+**Added 2026-08-27.** F2 sat at 8/10 for the whole build on an answer that was true in every
+particular. The three violations were not one problem:
+
+| Flagged | What it really is | Where the fix belongs |
+|---|---|---|
+| `UT Austin` | An **acronym** of "University of Texas at Austin" | The validator. A résumé writes the short form; nobody writes the long one in prose |
+| `nine years` | **Arithmetic**: 2026 minus the profile's 2017 | The prompt |
+| `Nasdaq's`, `SQL. I` | **Tokenizer artifacts** | The tokenizer (above) |
+
+The acronym is mechanical and belongs in the validator: every token of the candidate must be
+accounted for — present among the organisation's words, or a prefix of its initials — so `GX Austin`
+and `MIT Austin` still fail.
+
+The arithmetic is the interesting one, because **the obvious fix is wrong.** Teaching a
+string-matching check to do date algebra would trade a guarantee for a heuristic, in the one
+component whose value is that it fails closed. The claim is correct and unverifiable *by this
+mechanism*, and the honest response is not to weaken the mechanism.
+
+So the model is asked not to produce it: **"since 2017", never "the last nine years."** Better prose
+regardless — the reader can do the subtraction, and cannot check the assertion. The prompt states
+the consequence rather than the rule, because a model told *why* a constraint exists follows it
+better than one handed the constraint:
+
+> A separate check verifies your text against the profile and flags anything it cannot find, and the
+> person has to read every flag before they can send the application.
+
+Note the division of labour. The prompt is advisory — §7.1's whole premise — so it is used only where
+the failure is *noise a human must read*, never where the failure would be *an unsafe action*. Prompt
+for tidiness; mechanism for safety.
+
 #### The second source of truth has to actually be supplied
 
 §7.4 has always specified two sources: `profile.json` for candidate claims, the posting for employer
