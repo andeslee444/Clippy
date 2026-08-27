@@ -82,6 +82,35 @@ const squash = (s: string) => s.replace(/\s+/g, "");
  * fail-closed check that cries wolf eight times per real finding has already
  * failed open no matter what its code says.
  */
+/** Words that carry no initial in an acronym: "University *of* Texas *at* Austin". */
+const MINOR = new Set(["of", "the", "and", "at", "for", "in", "de", "la"]);
+
+/**
+ * Does `candidate` name `org` by acronym?
+ *
+ * "UT Austin" and "University of Texas at Austin" are the same school, and a
+ * résumé writes the first while a profile records the second. Substring
+ * matching cannot see it, and neither can squashing.
+ *
+ * Every token of the candidate must be accounted for: either it appears among
+ * the organisation's words, or it is a prefix of the organisation's initials.
+ * Both halves are required, which is what keeps this narrow — "GX Austin" fails
+ * on the first token, and a bare "U" fails the two-character floor.
+ */
+function acronymOf(candidate: string, org: string): boolean {
+  const words = org.split(/\s+/).filter(Boolean);
+  const significant = words.filter((w) => !MINOR.has(w));
+  if (significant.length < 2) return false;
+  const initials = significant.map((w) => w[0] ?? "").join("");
+
+  const tokens = candidate.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+
+  return tokens.every(
+    (t) => words.includes(t) || (t.length >= 2 && initials.startsWith(t)),
+  );
+}
+
 function variantsOf(lower: string): string[] {
   const out = new Set<string>([lower]);
   // Possessive: the profile holds "Nasdaq", the sentence says "Nasdaq's".
@@ -189,7 +218,7 @@ export function checkIntegrity(
       (v) =>
         known.some((k) => v === k || v.includes(k) || k.includes(v)) ||
         (postingText !== "" && postingText.includes(v)) ||
-        facts.organisations.some((o) => o === v || v.includes(o) || o.includes(v)) ||
+        facts.organisations.some((o) => o === v || v.includes(o) || o.includes(v) || acronymOf(v, o)) ||
         facts.titles.some((t) => t === v || v.includes(t) || t.includes(v)) ||
         facts.corpus.includes(v) ||
         // Spacing is not identity: the resume writes "Trading View", the

@@ -22,7 +22,20 @@ past it, and do not just explain the problem in prose — calling the tool is wh
 actually hands control back.
 
 Fill only fields you have been given values for. If a required field has no value,
-stop and say which field is missing rather than inventing one.`;
+stop and say which field is missing rather than inventing one.
+
+When you write free text about the person, every claim must be traceable to a fact
+you were given, WORD FOR WORD where possible:
+- Quote dates from their history rather than computing spans from them. Write
+  "since 2017", not "the last nine years" — the arithmetic may be right, but nobody
+  can check it against the profile, so it reads as invented.
+- Give numbers as they appear. Do not round, total, or restate them.
+- Name companies and schools as the profile names them, or by an acronym of that
+  same name. Never introduce one that is not there.
+
+This is not a style preference. A separate check verifies your text against the
+profile and flags anything it cannot find, and the person has to read every flag
+before they can send the application.`;
 
 /**
  * The observe-only prompt, for `Objective.readOnly`.

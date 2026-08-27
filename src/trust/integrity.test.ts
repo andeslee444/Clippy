@@ -251,3 +251,28 @@ describe("checkIntegrity — runs stop at sentence and clause boundaries", () =>
     expect(check("I used SQL. I led the migration at Globex.").ok).toBe(false);
   });
 });
+
+describe("checkIntegrity — an organisation named by its acronym", () => {
+  const acronymFacts = factsOf({
+    name: "A", email: "a@b.c", phone: "", location: "",
+    workAuthorized: true, needsSponsorship: false, salaryExpectation: "", links: {},
+    employers: [{ company: "Acme Corp", title: "Engineer", start: "2021", end: "2024", bullets: [] }],
+    education: [{ school: "University of Texas at Austin", degree: "BS Computer Science", end: "2017" }],
+    answers: {}, verifiedFields: [],
+  });
+  const ac = (t: string) => checkIntegrity(t, acronymFacts);
+
+  it("accepts the acronym a résumé actually uses", () => {
+    // The profile records the full name; nobody writes it out in prose.
+    expect(ac("I have a B.S. in Computer Science from UT Austin.").ok).toBe(true);
+  });
+
+  it("STILL rejects an acronym that expands to nothing on file", () => {
+    expect(ac("I have a B.S. in Computer Science from GX Austin.").ok).toBe(false);
+    expect(ac("I studied at MIT Austin.").ok).toBe(false);
+  });
+
+  it("does not let a single letter match anything", () => {
+    expect(ac("I worked at U Systems.").ok).toBe(false);
+  });
+});
