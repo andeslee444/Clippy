@@ -315,3 +315,38 @@ describe("checkIntegrity — initialisms and sentence-opening determiners", () =
     expect(d("My Globex Industries role taught me a lot.").ok).toBe(false);
   });
 });
+
+describe("checkIntegrity — compound adjectives are not organisations", () => {
+  const f = factsOf({
+    name: "A", email: "a@b.c", phone: "", location: "",
+    workAuthorized: true, needsSponsorship: false, salaryExpectation: "", links: {},
+    employers: [{ company: "Acme Corp", title: "Lead Product Manager, AI Agents", start: "2021", end: "2024", bullets: [] }],
+    education: [], answers: {}, verifiedFields: [],
+  });
+  const c = (t: string) => checkIntegrity(t, f);
+
+  it("does not read a hyphenated adjective as a company", () => {
+    // "IB-style" and "Hands-on" describe a thing; they do not name one, and no
+    // profile will ever contain them.
+    expect(c("I did IB-style diligence work at Acme Corp.").ok).toBe(true);
+    expect(c("Hands-on AI work has been my focus at Acme Corp.").ok).toBe(true);
+  });
+
+  it("still treats a hyphenated NAME as a name", () => {
+    // The capital after the hyphen is what separates Coca-Cola from IB-style.
+    expect(c("I worked at Coca-Cola on the platform.").ok).toBe(false);
+  });
+
+  it("matches a title acronym against consecutive words", () => {
+    // "PM" is Product Manager inside "Lead Product Manager, AI Agents".
+    expect(c("As Lead PM I owned the roadmap.").ok).toBe(true);
+  });
+
+  it("STILL rejects an invented company beside an adjective", () => {
+    expect(c("I did IB-style work at Globex Industries.").ok).toBe(false);
+  });
+
+  it("STILL rejects an acronym matching no consecutive run", () => {
+    expect(c("As Lead XQ I owned the roadmap.").ok).toBe(false);
+  });
+});

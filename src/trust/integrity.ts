@@ -99,6 +99,10 @@ const MINOR = new Set(["of", "the", "and", "at", "for", "in", "de", "la"]);
  * résumé writes the first while a profile records the second. Substring
  * matching cannot see it, and neither can squashing.
  *
+ * Applied to TITLES as well as organisations — "Lead PM" abbreviates "Lead
+ * Product Manager" by exactly the same move, and a check that knew this for
+ * employers but not for job titles would flag half of any résumé.
+ *
  * Every token of the candidate must be accounted for: either it appears among
  * the organisation's words, or it is a prefix of the organisation's initials.
  * Both halves are required, which is what keeps this narrow — "GX Austin" fails
@@ -113,9 +117,15 @@ function acronymOf(candidate: string, org: string): boolean {
   const tokens = candidate.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return false;
 
-  return tokens.every(
-    (t) => words.includes(t) || (t.length >= 2 && initials.startsWith(t)),
-  );
+  // An acronym is the initials of some CONSECUTIVE run of words, not a prefix
+  // of every initial in the name. "PM" is Product Manager inside "Lead Product
+  // Manager, AI Agents"; a prefix test only ever sees "lpmaa" and misses it.
+  const runs = new Set<string>();
+  for (let i = 0; i < initials.length; i++) {
+    for (let j = i + 2; j <= initials.length; j++) runs.add(initials.slice(i, j));
+  }
+
+  return tokens.every((t) => words.includes(t) || (t.length >= 2 && runs.has(t)));
 }
 
 function variantsOf(lower: string): string[] {
@@ -220,18 +230,32 @@ export function checkIntegrity(
     const words = lower.split(/\s+/);
     if (words.every((w) => STOPLIST.has(w))) continue;
 
+    // Hyphenated compounds ending in a lowercase suffix are ADJECTIVES, not
+    // names: "IB-style", "IB-adjacent", "Hands-on". They describe a thing; they
+    // do not name an organisation, and no profile will ever contain them. A
+    // hyphen followed by a CAPITAL is the opposite case — "Coca-Cola" and
+    // "E-Trade" are names — so the capital is what decides.
+    const withoutAdjectives = phrase
+      .split(/\s+/)
+      .filter((w) => !/^[A-Z][A-Za-z]*-[a-z]/.test(w))
+      .join(" ")
+      .trim();
+    // Nothing but adjectives: there is no entity here to verify.
+    if (!withoutAdjectives) continue;
+
     // A lone capitalised word at the START of a sentence is prose, not an
     // organisation. Mid-sentence it is checked — skipping every single word
     // let "Worked at Globex" through, which is the exact failure this exists
     // to prevent.
     if (words.length === 1 && sentenceInitial(text, match.index)) continue;
 
-    const recognised = variantsOf(lower).some(
+    const candidates = new Set([...variantsOf(lower), ...variantsOf(norm(withoutAdjectives))]);
+    const recognised = [...candidates].filter(Boolean).some(
       (v) =>
         known.some((k) => v === k || v.includes(k) || k.includes(v)) ||
         (postingText !== "" && postingText.includes(v)) ||
         facts.organisations.some((o) => o === v || v.includes(o) || o.includes(v) || acronymOf(v, o)) ||
-        facts.titles.some((t) => t === v || v.includes(t) || t.includes(v)) ||
+        facts.titles.some((t) => t === v || v.includes(t) || t.includes(v) || acronymOf(v, t)) ||
         facts.corpus.includes(v) ||
         // Spacing is not identity: the resume writes "Trading View", the
         // sentence writes "TradingView".

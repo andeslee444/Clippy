@@ -376,10 +376,25 @@ profile, the posting, and the allow-list still fails under every variant. A test
 fabricated employer is still rejected as `Globex`, `Globex's`, `At Globex I`, `(a) At Globex`, and
 `GlobexIndustries`.
 
-Stopping is also a design decision. Three warnings remain on that answer — `IB-style`,
-`Hands-on AI`, `As Lead PM`, all abbreviations genuinely absent from both sources. Narrowing further
-would mean fitting the tokenizer to one answer, and a fail-closed check drifts open one reasonable
-accommodation at a time.
+Where to stop is also a design decision, and the line that survived is **formal relations yes,
+resemblance no**:
+
+| Relation | Accepted | Why |
+|---|---|---|
+| Possessive — `Nasdaq's` → `Nasdaq` | ✅ | Grammar. Mechanical and total. |
+| Initialism — `B.S.` → `BS` | ✅ | Punctuation, not identity. |
+| Acronym — `UT Austin`, `Lead PM` | ✅ | Initials of consecutive words. A closed, checkable relation. |
+| Spacing — `TradingView` → `Trading View` | ✅ | Same characters. |
+| Compound adjective — `IB-style`, `Hands-on` | ✅ | Morphology: these describe, they do not name. A capital after the hyphen (`Coca-Cola`) still names. |
+| **Truncation — `Philadelphia Fed`** | ❌ | `Fed` is not the initials of `Federal Reserve`; it merely looks like it. |
+
+Every accepted row is a rule that can be stated without reference to any particular résumé, and each
+has a negative test pinning that `Globex` is still rejected under it. Truncation is refused because
+accepting it means accepting *prefix resemblance*, which has no edge — and a fail-closed check drifts
+open one reasonable accommodation at a time.
+
+The measured result on six real generated answers: five pass, one carries a single warning. From
+eight warnings and zero fabrications at the start.
 
 #### Three kinds of unverifiable, and only one is a validator problem
 
