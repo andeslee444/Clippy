@@ -61,3 +61,43 @@ describe("makeTools", () => {
     expect(vi.mocked(d.onStep).mock.calls[0]![0].outcome.kind).toBe("retry-free");
   });
 });
+
+/*
+ * The fourth instance of one bug: a value written by one component, read by
+ * another, and populated by nothing in between at the moment it is read.
+ * Previous three were budget.record (maxSteps unenforced), provenance (never
+ * stamped), and readOnly (dropped by an explicit field list). Here the CLI
+ * loads the profile lazily, so a résumé path captured when the tools were
+ * built was `undefined` for the life of the process — and the model reported
+ * "no résumé on file" while one sat in the profile.
+ */
+describe("makeTools — attachResume reads the path when it is needed", () => {
+  const deps = (resumePath: () => string | undefined) => ({
+    resumePath,
+    runEffect: async () => {},
+    readPage: async () => "",
+    capturePage: async () => ({ base64: "" }),
+    onStep: () => {},
+  });
+
+  it("sees a profile loaded AFTER the tools were built", async () => {
+    let path: string | undefined;
+    const tools = makeTools(deps(() => path));
+    // Tools built while the profile is still null — the CLI's actual order.
+    path = "/tmp/cv.pdf";
+    const result = await tools.attachResume("g1-r1");
+    expect(result).not.toMatch(/no résumé on file/);
+  });
+
+  it("refuses when there is genuinely no résumé", async () => {
+    const tools = makeTools(deps(() => undefined));
+    expect(await tools.attachResume("g1-r1")).toMatch(/no résumé on file/);
+  });
+
+  it("never invents a path", async () => {
+    const tools = makeTools(deps(() => undefined));
+    const result = await tools.attachResume("g1-r1");
+    expect(result).toMatch(/^ERROR/);
+    expect(tools.steps).toHaveLength(0);
+  });
+});

@@ -121,7 +121,7 @@ async function main(): Promise<void> {
   const context = profile ? renderProfileForModel(profile) : undefined;
 
   const tools = makeTools({
-  resumePath: profile ? resumePathOf(profile) : undefined,
+  resumePath: () => (profile ? resumePathOf(profile) : undefined),
     facts,
     runEffect: (e) => executor.runEffect(e),
     readPage: async () =>

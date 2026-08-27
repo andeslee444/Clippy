@@ -16,8 +16,15 @@ export interface ToolDeps {
   /**
    * Path to the user's résumé, from the loaded profile. Absent means
    * `attach_resume` refuses rather than guessing at a file.
+   *
+   * A FUNCTION, not a string, and that is the whole point. The CLI loads the
+   * profile lazily — it is still null when makeTools runs — so a snapshot
+   * captured `undefined` and kept it for the life of the process, and the model
+   * was told there was no résumé on file while one sat in the profile. `ingest`
+   * mid-session would have gone stale the same way. Read it when it is needed,
+   * not when the tools are built.
    */
-  resumePath?: string;
+  resumePath?: () => string | undefined;
   readPage: () => Promise<string>;
   capturePage: () => Promise<{ base64: string }>;
   onStep: (record: StepRecord) => void;
@@ -41,13 +48,14 @@ export function makeTools(deps: ToolDeps): BrainTools {
     capturePage: deps.capturePage,
 
     async attachResume(ref: string): Promise<string> {
-      if (!deps.resumePath) {
+      const path = deps.resumePath?.();
+      if (!path) {
         return "ERROR: no résumé on file — run `ingest <path>` first, or ask the person to attach it.";
       }
       // Routed through perform() so it is recorded, gated, and provenance-
       // stamped like any other effect. A quiet side channel to the executor is
       // how an action ends up outside the audit log.
-      return await this.perform({ kind: "upload", ref, path: deps.resumePath });
+      return await this.perform({ kind: "upload", ref, path });
     },
 
     async perform(raw: Effect): Promise<string> {

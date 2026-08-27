@@ -137,7 +137,7 @@ async function currentPosting(): Promise<string> {
 
 const steps: StepRecord[] = [];
 const brainTools = makeTools({
-  resumePath: profile ? resumePathOf(profile) : undefined,
+  resumePath: () => (profile ? resumePathOf(profile) : undefined),
   facts: await loadProfile(PROFILE_PATH).then(factsOf).catch(() => undefined),
   runEffect: (effect) => executor.runEffect(effect),
   readPage: async () => {
