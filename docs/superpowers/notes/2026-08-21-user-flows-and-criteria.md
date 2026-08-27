@@ -189,5 +189,10 @@ Stated so the suite is not mistaken for more than it is:
 
 - **Real ATS quirks.** Fixtures approximate Greenhouse and Workday; they do not reproduce their JavaScript — see the table above for what that cost. Live checks stay necessary, and the fixtures should grow a custom combobox and a form that rejects.
 - **Bot detection.** Cannot be tested without triggering it.
-- **Model variance.** A single pass proves the flow is achievable, not that it is reliable. Repeat counts belong in a later harness.
+- ~~**Model variance.**~~ **Now measured.** `--repeat N` runs each flow N times and reports a rate.
+  A single pass proves a flow is achievable, not that it is reliable, and the gap between those is
+  where F2 and F8 both hid: each passed a single run while sitting at 80% and 40%. Standing result
+  as of 2026-08-27 — **9/9 flows, 5/5 runs each, 0 criterion failures across 45 runs.** Treat
+  anything below 100% as a defect to diagnose, not noise to average away: both flakes turned out to
+  be real faults, one in the product and one in the criterion itself.
 - **Multi-objective runs.** The outer loop (§8.1) is not built, so "apply to five jobs" is out of scope until it is.
