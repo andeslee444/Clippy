@@ -439,6 +439,26 @@ the call returning:
 | `upload` | the file input reports a file |
 | `submit` | **the page navigated** |
 
+`select` is the subtle one, because the widget can be wrong in three different
+places at once. Greenhouse's location field needed all three fixed before a value would land:
+
+- **Type, do not fill.** `fill()` sets the value and dispatches one input event. An async combobox
+  starts its debounced search from *keystrokes*, so a filled value leaves the option list empty
+  forever — the field offered zero options on every attempt until this changed.
+- **Poll for options, do not sleep.** They arrive roughly 700ms after typing and none exist at click
+  time. A fixed wait either races the request or pads every synchronous select with dead time.
+- **A remote search takes the query literally.** `"New York, NY"` matches nothing in an index that
+  spells it `"New York, New York, United States"`, while its first segment returns nine results.
+  Retype the shorter query, which is what a person does, and match on the leading segment — with the
+  option's own leading segment required to be identical, so `"New York"` cannot quietly settle for
+  `"New Rochelle, New York, United States"`.
+
+And the evidence must not be borrowed from the wrong check. `verifyLanded` reads `inputValue`, which
+for a combobox holds the text that was *typed* — not a selection. It reported
+`select ok: New York, NY` for a field that had chosen nothing, and four consecutive submits were
+rejected for a missing location. **A control that can be asked what it displays is asked; one that
+cannot is not assumed to have succeeded.**
+
 #### For submit, the direction of the error decides the design
 
 The other effects can be conservative: a false "didn't land" costs a retry. Submit cannot, and the
