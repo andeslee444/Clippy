@@ -8,7 +8,7 @@ const profile: Profile = {
   salaryExpectation: "$185,000", links: {},
   employers: [{ company: "Acme Corp", title: "Senior Engineer", start: "2021", end: "2024",
     bullets: ["Led the platform migration, cutting p95 latency 40%"] }],
-  education: [], answers: {},
+  education: [], answers: {}, verifiedFields: [],
 };
 const facts = factsOf(profile);
 const p = (v: string) => provenanceOf(v, facts);

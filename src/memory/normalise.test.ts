@@ -6,7 +6,7 @@ const base: Profile = {
   name: "A", email: "a@b.c", phone: "", location: "",
   workAuthorized: true, needsSponsorship: false, salaryExpectation: "", links: {},
   employers: [{ company: "Acme", title: "PM", start: "2020", bullets: [] }],
-  education: [], answers: {},
+  education: [], answers: {}, verifiedFields: [],
 };
 
 describe("titleCaseName", () => {
@@ -47,3 +47,18 @@ describe("profileWarnings", () => {
     expect(w.why).toMatch(/does not need sponsorship/);
   });
 });
+
+describe("profileWarnings — confirmation clears the warning", () => {
+  const filled = { ...base, salaryExpectation: "$1", phone: "1", location: "NY", links: { x: "y" } };
+
+  it("nags while work authorisation is only a default", () => {
+    expect(profileWarnings(filled)).toHaveLength(1);
+  });
+
+  it("goes quiet once the user has actually confirmed it", () => {
+    // A warning that can never be cleared is one people learn to scroll past,
+    // which is worse than no warning at all.
+    expect(profileWarnings({ ...filled, verifiedFields: ["workAuthorized"] })).toHaveLength(0);
+  });
+});
+

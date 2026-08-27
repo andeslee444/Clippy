@@ -7,7 +7,7 @@ const profile: Profile = {
   workAuthorized: true, needsSponsorship: false, salaryExpectation: "", links: {},
   employers: [{ company: "Acme Corp", title: "Senior Engineer", start: "2021", end: "2024",
     bullets: ["Led the platform migration, cutting p95 latency 40%"] }],
-  education: [], answers: {},
+  education: [], answers: {}, verifiedFields: [],
 };
 const facts = factsOf(profile);
 const brain = (texts: string[]) => {

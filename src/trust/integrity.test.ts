@@ -10,7 +10,7 @@ const profile: Profile = {
     bullets: ["Led the platform migration, cutting p95 latency 40%"],
   }],
   education: [{ school: "State University", degree: "BS Computer Science", end: "2018" }],
-  answers: {},
+  answers: {}, verifiedFields: [],
 };
 const facts = factsOf(profile);
 const check = (text: string) => checkIntegrity(text, facts);

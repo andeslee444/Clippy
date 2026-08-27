@@ -20,7 +20,7 @@ const sample: Profile = {
     },
   ],
   education: [{ school: "State University", degree: "BS Computer Science", end: "2018" }],
-  answers: { "why do you want to work here": "" },
+  answers: { "why do you want to work here": "" }, verifiedFields: [],
 };
 
 describe("ProfileSchema", () => {

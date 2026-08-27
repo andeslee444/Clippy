@@ -40,6 +40,17 @@ export const ProfileSchema = z.object({
   answers: z.record(z.string(), z.string()).default({}),
   /** Path to the source document, which is also the template for the write path (§6.4). */
   sourceDocument: z.string().optional(),
+  /**
+   * Fields the user has explicitly confirmed, as opposed to values ingestion
+   * defaulted.
+   *
+   * `workAuthorized: true` looks identical whether a person said so or a parser
+   * guessed it, and the difference matters enormously when it is asserted to an
+   * employer. This is what lets the warning stop nagging once a value is
+   * genuinely verified, instead of becoming permanent noise everyone learns to
+   * scroll past.
+   */
+  verifiedFields: z.array(z.string()).default([]),
 });
 
 export type Profile = z.infer<typeof ProfileSchema>;

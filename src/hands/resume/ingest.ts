@@ -50,6 +50,10 @@ export function draftToProfile(draft: ResumeDraft, sourceDocument: string): Prof
       ...(e.end ? { end: e.end } : {}),
     })),
     answers: {},
+    // Nothing is verified at ingestion by definition — every value here came
+    // from a parser, and the point of the field is to distinguish that from a
+    // value a person confirmed.
+    verifiedFields: [],
     sourceDocument,
   };
 }

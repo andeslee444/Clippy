@@ -49,13 +49,16 @@ export function profileWarnings(profile: Profile): ProfileWarning[] {
   if (Object.keys(profile.links).length === 0) {
     out.push({ field: "links", why: "no LinkedIn or portfolio — most forms ask" });
   }
-  // These two are DEFAULTED by ingestion, never extracted. A default here is an
-  // unverified claim about immigration status asserted to an employer.
-  out.push({
-    field: "workAuthorized / needsSponsorship",
-    why: `currently ${profile.workAuthorized ? "authorised" : "not authorised"}, ` +
-      `${profile.needsSponsorship ? "needs" : "does not need"} sponsorship — ` +
-      `defaulted by ingestion, confirm this is right`,
-  });
+  // Defaulted by ingestion, never extracted — an unverified claim about
+  // immigration status asserted to an employer. Suppressed once confirmed,
+  // because a warning that can never be cleared is one people learn to ignore.
+  if (!profile.verifiedFields.includes("workAuthorized")) {
+    out.push({
+      field: "workAuthorized / needsSponsorship",
+      why: `currently ${profile.workAuthorized ? "authorised" : "not authorised"}, ` +
+        `${profile.needsSponsorship ? "needs" : "does not need"} sponsorship — ` +
+        `defaulted by ingestion, confirm this is right`,
+    });
+  }
   return out;
 }
