@@ -186,6 +186,40 @@ Instead, the user's real `.docx` is the template and generation is **targeted te
 OOXML** (docxtemplater, or direct XML manipulation), preserving every style. Only the text spans
 identified as tailorable change; everything else is byte-identical.
 
+### 6.5 Wiring must be forced by types, not remembered
+
+**Added 2026-08-27, after the same defect appeared five times in one build.**
+
+The shape is always identical: a field written by one component, read by another, and populated by
+nothing in between at the moment it is read. Neither side is wrong. The wire is missing.
+
+| Instance | Symptom |
+|---|---|
+| `budget.record()` never called | `maxSteps` unenforced; a run that filled two fields reported "0 steps" |
+| `provenance` never stamped | The §9.5 gate consumed a field nothing wrote — every value showed `unknown` |
+| `Objective.readOnly` dropped | The eval harness rebuilt the objective from an explicit field list, silently omitting the flag that makes §7.3 observation-only real |
+| `checkIntegrity` never called at the gate | Implemented, tested, and rendered — but the only call sites were the `draft` tool and the edit handler, so a real Submit gate showed 900 words of generated prose with no warnings |
+| `resumePath` captured too early | The CLI loads the profile lazily, so a path read at construction was `undefined` for the life of the process; the model reported "no résumé on file" while one sat in the profile |
+
+**None of these was caught by a unit test, and none of them could have been.** A unit test supplies
+the input and verifies the function given that input — which is precisely the thing that was never
+in question. Every instance was found by reading real output that looked wrong.
+
+Three rules follow, and they are cheap:
+
+1. **Required over optional.** When a component's correctness depends on a value another component
+   supplies, the parameter is required. Making `buildGateView`'s facts optional would have
+   reproduced its bug exactly: the call site that forgets is the call site that needs it. Made
+   required, the compiler asked at all fourteen existing call sites in one build.
+2. **Thunk over snapshot.** A value read from mutable state is a function, not a string. A string can
+   be captured at the wrong moment; a function cannot. This is what fixed `resumePath`, and the type
+   change *is* the fix.
+3. **No explicit field lists** where a spread will do. The `readOnly` bug was a literal
+   `{goal, maxSteps, maxCost, context}` that predated the flag and silently kept omitting it.
+
+A convention that has to be remembered at every call site is not a design; it is a defect with a
+delay on it.
+
 ## 7. Trust model
 
 ### 7.1 Gating is mechanical, not prompted
@@ -228,6 +262,24 @@ only ever *add* gating, never remove it.
 **The author's decision lives in two places**, and the table is the more consequential one:
 `TOOL_META` (is `upload` really reversible? is `navigate` outward-facing?) and the `isGated()`
 predicate combining static flags with element-derived properties.
+
+#### Prefer a capability the model cannot misdirect
+
+Gating decides whether an action needs a human. A prior question is what the action can express at
+all, and the cheapest safety property is the one that is unrepresentable rather than merely refused.
+
+`upload` takes a filesystem path. Exposed to the model directly, that path is model-controlled text
+sitting one persuasive page away from `~/.ssh/id_rsa` — and F4 (§11) exists because pages do try
+exactly that. The allowlist in `trust/uploads.ts` refuses it, and the schema refuses it again before
+anything touches the disk, but both are checks on a bad request that was allowed to be formed.
+
+The tool the model actually gets is **`attach_resume(ref)`**, which takes no path. The file comes
+from the loaded profile. The model decides *whether* to attach and *where* — never *what*. The
+allowlist stays, because defence in depth is not redundancy when the thing being defended is a
+private key, but it is now the second line rather than the only one.
+
+Generalised: **when a capability needs one argument from the user's world and one from the model's,
+do not let the model supply the first.**
 
 ### 7.2 Kill switch
 
@@ -282,6 +334,62 @@ A learned scorer must never be the safety gate. Run the other way round — veri
 "the best one" — a fabricated bullet that happens to score well passes straight through, and a
 guarantee has been traded for a probability.
 
+#### The check must run where the human is looking
+
+**Added 2026-08-27.** A validator that is not invoked at the decision point is documentation.
+
+`checkIntegrity` had two call sites: the `draft` tool, and the handler that runs when a person edits
+a value in the gate. A real application to a real posting reached the Submit gate having used
+`fill` — the ordinary path — so the check never ran. The gate displayed 900 words of generated prose
+with no warnings, not because it passed but because nobody asked. The renderer even had a warning
+line ready and left it hidden until someone edited the field, which means the one reader who never
+edits anything, the one clicking Approve, saw nothing.
+
+**§7.4 runs when the gate is built**, on values the model produced. Profile and human values are not
+checked: a profile value failing §7.4 means the profile disagrees with itself, which is a real
+problem but not one to raise over a Submit button. Values under 40 characters are skipped, because a
+one-word answer has no room for a fabricated claim and running an entity tokenizer over `"Yes"`
+produces noise that trains the reader to skip the warnings that matter.
+
+#### Narrowing the tokenizer is not loosening the check
+
+The first honest measurement of this validator, against a truthful answer, was **eight violations
+and zero fabrications**. Every one was an artifact of how prose was cut into candidate entities:
+
+| Reported | Actually |
+|---|---|
+| `Nasdaq's` | possessive not stripped before lookup |
+| `Bloomberg I` | the English pronoun swallowed by the capital run |
+| `SQL. I` | the run carried past a full stop into the next sentence |
+| `On NMC's` | a capitalised leading preposition landed inside the name |
+| `(a) Deal` | a list marker not recognised as opening a clause |
+| `TradingView` | the résumé writes it "Trading View" |
+
+This is the failure mode that matters most for a fail-closed check, and it is not a false negative.
+**A check that cries wolf eight times per real finding has already failed open**, whatever its code
+says, because the human stops reading it. The pressure at that point is to relax what counts as a
+match — and that is how the guarantee actually dies.
+
+The distinction the fix has to preserve: **normalise the token, never the comparison.** Each variant
+of a spelling is tried against the same unchanged sources, so an organisation absent from the
+profile, the posting, and the allow-list still fails under every variant. A test pins that a
+fabricated employer is still rejected as `Globex`, `Globex's`, `At Globex I`, `(a) At Globex`, and
+`GlobexIndustries`.
+
+Stopping is also a design decision. Three warnings remain on that answer — `IB-style`,
+`Hands-on AI`, `As Lead PM`, all abbreviations genuinely absent from both sources. Narrowing further
+would mean fitting the tokenizer to one answer, and a fail-closed check drifts open one reasonable
+accommodation at a time.
+
+#### The second source of truth has to actually be supplied
+
+§7.4 has always specified two sources: `profile.json` for candidate claims, the posting for employer
+and role claims — a company's own words for its teams, products, and technologies will never appear
+in a candidate's résumé, and rejecting them would make every tailored answer fail.
+
+The gate was passing `""` for the posting. The parameter existed, was documented, and was empty at
+the only call site that mattered — §6.5 again. It is now wired from the most recent page read.
+
 ### 7.5 Never attempted
 
 CAPTCHAs are never solved or attempted. Encountering one is an immediate STUCK (§8.4). Credentials
@@ -304,6 +412,67 @@ tree, ship it to the model, and write it into `runs/*.jsonl` forever.
 Redaction happens inside the page-side snapshot function, so the plaintext never crosses into Node.
 The node itself is still emitted — the model needs to know a password field exists to recognise a
 login wall — only the value is withheld.
+
+### 7.6 Effects must prove they landed
+
+**Added 2026-08-27.** An effect that reports success without evidence is worse than one that fails,
+because every layer above it — the model, the budget, the audit log, the closing message to the
+user — believes it.
+
+Three real failures, each from a different effect:
+
+- **`fill`** returned `ok` having changed nothing. The model re-read the page, saw an empty field,
+  filled it again, and burned a 40-step budget on two fields.
+- **`select`** succeeded against a react-select widget that keeps its `<input>` empty and renders
+  the choice into a sibling `div`. The snapshot showed `""`, so the model re-selected: 27 selects
+  across 18 reads. *A tool result that cannot show work being done is as bad as one that lies.*
+- **`submit`** returned `ok` on a form that had rejected the submission. The run reported DONE and
+  the model told the user it had applied for a job it had not applied for.
+
+**Every effect names its own evidence**, and the evidence is read from the page, never inferred from
+the call returning:
+
+| Effect | Landed when |
+|---|---|
+| `fill` | the field holds the value |
+| `select` | the choice is *displayed* — the value may live in a sibling node, not `.value` |
+| `upload` | the file input reports a file |
+| `submit` | **the page navigated** |
+
+#### For submit, the direction of the error decides the design
+
+The other effects can be conservative: a false "didn't land" costs a retry. Submit cannot, and the
+asymmetry runs the opposite way to intuition.
+
+A false *positive* invents an application that does not exist. A false *negative* reads as "not
+sent" — and the obvious, correct-seeming response to "not sent" is to send it again. **The failure
+mode of a check meant to prevent a phantom application is duplicate real ones**, arriving under the
+user's name at an employer they are trying to impress.
+
+This is not hypothetical. Verification originally read the DOM as soon as `settle()` returned, which
+is while the *old* document is still on screen — and the old document still holds the validation
+errors from the previous attempt. It reported "Please enter your location" for a submission
+Greenhouse had already accepted. The run ended STUCK, the audit log recorded four rejections, and
+the confirmation page was loading behind it.
+
+So the order is fixed: **navigation is checked first and is sufficient.** Validation signals
+(`aria-invalid`, short visible messages in validation phrasing) are consulted *only* if the page has
+not moved. The URL is captured before the click, because after it there is nothing to compare
+against.
+
+#### Page-side code may not define named functions
+
+A constraint, not a preference, and it has been violated twice.
+
+`tsx`/`esbuild` compile with `keepNames`, which rewrites `const seen = (e) => …` into
+`__name((e) => …, "seen")`. `__name` is a bundler helper that does not exist in the browser, so any
+callback passed to `page.evaluate` containing a *named* function throws `ReferenceError` at runtime
+while compiling and unit-testing perfectly cleanly. The first occurrence cost the page script, which
+now lives as unbundled `.js` loaded as text; the second silently turned every `submit` into a
+failure.
+
+Booleans, loops, and anonymous callbacks are fine. Named ones are not. §11 covers why the test suite
+cannot see this.
 
 ## 8. The agent loop
 
@@ -408,6 +577,9 @@ remaining context of a 40-step run.
 | Stale ref | Re-observe, retry same intent — free, does not count against budget |
 | Element not found (hallucinated ref) | Re-observe, retry, max 2 |
 | Action executed, page unchanged | Retry once, then escalate |
+| Effect reported success, page disagrees | Not a failure *response* — a failure to detect. See §7.6: the effect itself must fail |
+| Submit rejected by form validation | Surface the form's own messages to the model and continue; it is recoverable and the form has said exactly what is wrong |
+| Custom widget will not accept a value (Places autocomplete, combobox) | Retry via the widget's own interaction, then → STUCK naming the field. Never submit around it |
 | Navigation timeout | Backoff, retry 2× |
 | Model output unparseable | Retry with parse error appended, max 2 |
 | Login wall | → STUCK immediately |
@@ -498,6 +670,17 @@ resume bullet is a false claim on a real application. It also keeps the gate hon
 The distinction is free architecturally: `hands/` already knows whether a value came from
 `profile.json` or from a `KnowBrain` call, because those are different code paths.
 
+**"Each shows the integrity validator's result" is load-bearing and was, for one whole build, false.**
+The warning line existed and stayed hidden until someone edited the field — so the only reader who
+never edits anything, the one clicking Approve, saw no warnings at all. The result is now computed
+when the gate is *built* (§7.4), not when a field is touched.
+
+The gate must also show **what** is about to be sent, not merely that something is. The CLI gate
+printed the effect as JSON — `{"kind":"submit","ref":"g…-r61"}` — which tells the reader a submit is
+pending and nothing about the seventeen values riding on it. That is not a decision anyone can
+actually make. Both surfaces render the same `buildGateView` output, so the terminal and the panel
+cannot drift.
+
 **Edit** allows inline correction of generated text. Editing re-runs the integrity validator and
 **promotes the value's provenance from generated to human-authored**, so it renders as user-authored
 on the next pass. This is preferred to handing the browser back, which is heavier and would leave the
@@ -583,6 +766,26 @@ The module boundaries in §6.1 were chosen largely to make this possible.
 | Document I/O (§6.4) | Extraction tested against a real resume fixture, asserting employers/titles/dates land in the right fields. Template surgery asserts the output opens, and that every span outside the tailored text is byte-identical to the source |
 | End-to-end | One recorded posting replayed as a smoke test |
 
+### 11.1 What this strategy structurally cannot catch
+
+**Added 2026-08-27.** Two classes of defect are invisible to every row of the table above, and both
+have shipped. Naming them is more useful than pretending more of the same tests would help.
+
+**Missing wiring (§6.5).** A unit test supplies the input and checks the output — verifying the
+function *given* its input, which is exactly what was never in doubt. Five defects of this shape
+passed a green suite. The mitigation is not a test; it is the type system (required parameters,
+thunks over snapshots), plus reading real output and treating anything that looks wrong as wrong.
+
+**Code that runs in the page.** The fake `Page` used by `hands/browser` tests never executes the
+callback handed to `page.evaluate` — it returns a canned value. So a callback that throws
+`ReferenceError` in a real browser passes every test (§7.6). The mitigation is a **source guard**:
+a test that reads `hands/browser/*.ts`, extracts each `evaluate(…)` callback by bracket matching,
+and fails if one declares a named function. It is a lint rule wearing a test's clothes, and it
+encodes an invariant no behavioural test can reach.
+
+Where a defect class cannot be tested, the honest move is to say so in the spec and put a
+structural guard in its place — not to add more tests of the kind that already missed it.
+
 ## 12. Risks
 
 | Risk | Mitigation |
@@ -593,6 +796,10 @@ The module boundaries in §6.1 were chosen largely to make this possible.
 | `capturePage()` overused, blowing the per-objective budget | Screenshots are evicted from history after one turn (§8.3) and downscaled before send. If `ActBrain` reaches for it every step, that is a prompting problem — cap auto-triggered captures per objective and surface the count in the panel |
 | Jenova latency on knowledge turns makes runs feel slow | Knowledge turns are off the hot path; overlap them with browser work where possible |
 | Submitting a bad application to a real employer | §7.1 gate, §7.4 validator, §9.5 provenance diff. Three independent layers |
+| **Submitting the same application twice** | A submit wrongly reported as failed invites a resend (§7.6). Navigation is checked before validation signals, and is sufficient on its own |
+| **A safety check that is never invoked** | Every check named in §7 must have a call site on the path a real run takes, not only on the path that motivated it. §7.4's gate wiring was missing for the entire build before it was measured |
+| **A fail-closed check ignored because it is noisy** | Measured against real generated text before being trusted; false-positive rate is a safety property, not a polish item (§7.4) |
+| A required field no widget interaction can satisfy | → STUCK naming the field (§8.4). Never submit around it, never invent a value |
 
 ## 13. KnowBrain agent routing (resolved 2026-08-21)
 
