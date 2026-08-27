@@ -347,6 +347,51 @@ function checkGeneratedTextIntegrity(ctx) {
   };
 }
 
+/**
+ * The gate must render WHAT is being sent, not merely that something is.
+ *
+ * A gate that shows `{"kind":"submit","ref":"g…-r61"}` and nothing else asks
+ * for a decision no one can make.
+ */
+function checkGateShowsPayload(ctx) {
+  const { gateView } = ctx;
+  const items = gateView.groups.flatMap((g) => g.items);
+  const valued = items.filter((i) => String(i.value ?? "").length > 0);
+  const pass = gateView.total > 0 && valued.length === items.length && items.every((i) => i.field);
+  return {
+    pass,
+    detail: pass
+      ? `gate renders ${gateView.total} field(s), every one with a label and a value`
+      : `gate rendered ${items.length} item(s), ${valued.length} with values, total=${gateView.total}`,
+  };
+}
+
+/**
+ * POSITIVE CONTROL: the §7.4 warning must come from the product.
+ *
+ * Asserting "no warning" on a clean answer proves nothing — an unwired check
+ * produces exactly the same silence. So a synthetic step carrying an invented
+ * employer is put through the product's own buildGateView, and the product must
+ * flag it. This is the criterion that would have caught checkIntegrity having
+ * no call site on the path a real run takes.
+ */
+function checkGateWarnsFromProduct(ctx) {
+  const fabricated =
+    "I spent four years at Globex Industries leading their platform team, and I would bring the same focus here.";
+  const view = buildGateView(
+    [{ action: { kind: "fill", ref: "g1-r1", value: fabricated, provenance: "generated" }, outcome: { kind: "ok" }, effect: "Why this role?" }],
+    ctx.facts,
+    "",
+  );
+  const warning = view.groups[0]?.items[0]?.warning;
+  return {
+    pass: Boolean(warning && /globex/i.test(warning)),
+    detail: warning
+      ? `product flagged the planted claim: ${warning.slice(0, 90)}`
+      : "product produced NO warning for a fabricated employer — §7.4 is not wired into the gate",
+  };
+}
+
 function checkGateSeparation(ctx) {
   const attempt = findFillByLabel(ctx.auditLines, ctx.refMap, "why are you interested");
   const gateView = ctx.gateView;
@@ -627,6 +672,8 @@ export const FLOWS = [
       { name: "Generated text passes §7.4 (checkIntegrity)", run: (ctx) => checkGeneratedTextIntegrity(ctx) },
       { name: "The gate separates them (generated expanded, profile collapsed)", run: (ctx) => checkGateSeparation(ctx) },
       { name: "Review load is small (needsReview<=3, total>=6)", run: (ctx) => checkReviewLoad(ctx) },
+      { name: "The gate shows what is being sent", run: (ctx) => checkGateShowsPayload(ctx) },
+      { name: "Integrity warnings come from the product, not the harness", run: (ctx) => checkGateWarnsFromProduct(ctx) },
     ],
   },
   {
@@ -870,7 +917,12 @@ async function runFlow(flow, { session, profile, facts }) {
   const refMap = buildRefMap(capturedSnapshots);
   const finalSnapshot = await readPage(session.page).catch(() => null);
   const finalUrl = session.page.url();
-  const gateView = buildGateView(tools.steps);
+  // Facts and posting, exactly as the product supplies them. This read
+  // `buildGateView(tools.steps)` for the whole build — so the harness examined
+  // a gate with the integrity check switched off, and could not have noticed
+  // that the product never ran it either. harness.mjs is plain JS, so making
+  // the parameter required did not catch this call site.
+  const gateView = buildGateView(tools.steps, facts, finalSnapshot?.text ?? "");
 
   const ctx = {
     flow,
