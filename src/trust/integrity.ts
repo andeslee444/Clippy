@@ -40,7 +40,19 @@ const NUMBER_WORD = new RegExp(
 );
 
 /** Runs of capitalised words — the shape an organisation name takes. */
-const CAPRUN = /\b[A-Z][a-zA-Z&.'-]*(?:\s+(?:of|and|the)?\s*[A-Z][a-zA-Z&.'-]*)*/g;
+/**
+ * A run of capitalised words, as a candidate entity.
+ *
+ * The inner word may not end in a full stop. It used to, and the run then
+ * swallowed the next sentence's first word: "…using SQL. I built…" tokenised
+ * as "SQL. I", and "…reviewing PRs. I built…" as "PRs. I" — two organisations
+ * that have never existed, reported against an answer that was entirely true.
+ * The lookbehind is on the CONTINUATION, not the word: a trailing dot is
+ * consumed happily, but the run cannot carry on past one. Guarding the word
+ * instead does nothing, because the dot has already been eaten by the time the
+ * check runs.
+ */
+const CAPRUN = /\b[A-Z][a-zA-Z&'-]*\.?(?:(?<!\.)\s+(?:of|and|the)?\s*[A-Z][a-zA-Z&'-]*\.?)*/g;
 
 /** Is this match at the start of a sentence? Those are prose, not organisations. */
 function sentenceInitial(text: string, index: number): boolean {
@@ -78,6 +90,10 @@ function variantsOf(lower: string): string[] {
   // A trailing lone "I" is the English pronoun swallowed by the capital run:
   // "at Bloomberg I did credit analysis" tokenises as "Bloomberg I".
   for (const v of [...out]) out.add(v.replace(/\s+i$/, "").trim());
+  // A leading preposition belongs to the sentence, not to the name. A clause
+  // opening "On Nasdaq's acquisition…" or "As Lead PM…" capitalises the
+  // preposition, and it lands inside the run.
+  for (const v of [...out]) out.add(v.replace(/^(?:on|at|as|in|for|with|to|by|from)\s+/, "").trim());
   return [...out].filter(Boolean);
 }
 

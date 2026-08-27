@@ -71,7 +71,7 @@ const executor = new GatedExecutor({
     // anyone can actually make. Reloaded per gate: a gate blocks on a human,
     // so one file read costs nothing next to the wait.
     const gateFacts = await loadProfile(PROFILE_PATH).then(factsOf).catch(() => undefined);
-    const view = buildGateView(steps, gateFacts);
+    const view = buildGateView(steps, gateFacts, lastPageText);
     if (view.total > 0) {
       console.log(
         `   ${view.total} field(s) filled` +
@@ -93,6 +93,9 @@ const executor = new GatedExecutor({
     return answer.trim().toLowerCase() === "y";
   },
 });
+
+/** Prose from the most recent page read. See the gate below. */
+let lastPageText = "";
 
 /** What the executor is currently working on, so an abort names the right thing. */
 let inFlight: Action = { kind: "readPage" };
@@ -142,7 +145,13 @@ const brainTools = makeTools({
   runEffect: (effect) => executor.runEffect(effect),
   readPage: async () => {
     inFlight = { kind: "readPage" };
-    return renderSnapshot(await executor.observe({ kind: "readPage" }, () => readPage(session.page)));
+    const snap = await executor.observe({ kind: "readPage" }, () => readPage(session.page));
+    // Kept for the gate: §7.4 verifies employer and role vocabulary against the
+    // POSTING, not the profile — a company's own words for its teams and
+    // technologies will never appear in a candidate's résumé. The gate was
+    // passing "" for it, so every such term read as unverifiable.
+    lastPageText = snap.text ?? "";
+    return renderSnapshot(snap);
   },
   capturePage: async () => {
     inFlight = { kind: "capturePage" };

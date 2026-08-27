@@ -220,3 +220,34 @@ describe("checkIntegrity — tokenizer artifacts are not fabrication", () => {
     expect(check("Ran diligence on GlobexIndustries.").ok).toBe(false);
   });
 });
+
+describe("checkIntegrity — runs stop at sentence and clause boundaries", () => {
+  it("does not join a sentence-final word to the next sentence", () => {
+    // "…using SQL. I built…" tokenised as "SQL. I" — an organisation that has
+    // never existed, reported against an answer true in every particular.
+    expect(check("I used SQL. I led the migration at Acme Corp.").ok).toBe(true);
+  });
+
+  it("flags the abbreviation itself, not the abbreviation plus the next clause", () => {
+    // "PRs" is genuinely unknown and stays flagged — that is fail-closed
+    // working. What must not survive is the JOINED form, which named a thing
+    // no sentence in the text ever referred to.
+    const result = check("I reviewed PRs. I shipped the migration.");
+    expect(result.violations.map((v) => v.value)).not.toContain("PRs. I");
+  });
+
+  it("keeps a real trailing initialism together", () => {
+    // The fix must not split "Bloomberg L.P." into something unrecognisable.
+    expect(check("Worked at Bloomberg L.P. on credit analysis.").ok).toBe(false);
+  });
+
+  it("does not treat a leading preposition as part of the name", () => {
+    expect(check("On Acme Corp's migration I led the platform work.").ok).toBe(true);
+    expect(check("As Senior Engineer I led the platform migration.").ok).toBe(true);
+  });
+
+  it("STILL rejects an invented organisation behind a preposition", () => {
+    expect(check("On Globex's migration I led the platform work.").ok).toBe(false);
+    expect(check("I used SQL. I led the migration at Globex.").ok).toBe(false);
+  });
+});
