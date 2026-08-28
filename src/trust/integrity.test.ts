@@ -350,3 +350,24 @@ describe("checkIntegrity — compound adjectives are not organisations", () => {
     expect(c("As Lead XQ I owned the roadmap.").ok).toBe(false);
   });
 });
+
+describe("checkIntegrity — leading function words", () => {
+  it("strips a whole run of them, not just one", () => {
+    // "If the Core Ledger team…" tokenised as the organisation
+    // "If the Core Ledger". Two leading function words, so stripping one was
+    // not enough — which is why this is a loop over the stoplist rather than
+    // an alternation of the words seen so far.
+    const posting = "You will join the Core Ledger team building append-only systems.";
+    const r = checkIntegrity("If the Core Ledger team would have me, I would be glad to talk.", facts, [], posting);
+    expect(r.violations.map((v) => v.value)).not.toContain("If the Core Ledger");
+  });
+
+  it("STILL rejects an invented name behind function words", () => {
+    expect(checkIntegrity("If the Globex Industries team would have me.", facts, [], "").ok).toBe(false);
+  });
+
+  it("never strips away the last word", () => {
+    // "The" alone must not become an empty candidate that matches everything.
+    expect(checkIntegrity("I then joined Globex.", facts, [], "").ok).toBe(false);
+  });
+});

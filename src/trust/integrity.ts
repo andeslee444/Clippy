@@ -136,11 +136,21 @@ function variantsOf(lower: string): string[] {
   // A trailing lone "I" is the English pronoun swallowed by the capital run:
   // "at Bloomberg I did credit analysis" tokenises as "Bloomberg I".
   for (const v of [...out]) out.add(v.replace(/\s+i$/, "").trim());
-  // A leading preposition or determiner belongs to the sentence, not to the
-  // name. A clause opening "On Nasdaq's acquisition…", "As Lead PM…", or
-  // "My B.S. in…" capitalises it, and it lands inside the run.
+  // Leading function words belong to the sentence, not to the name. A clause
+  // opening "On Nasdaq's acquisition…", "As Lead PM…", "My B.S. in…", or "If the
+  // Core Ledger team…" capitalises its first word, and it lands inside the run.
+  //
+  // Driven by STOPLIST rather than a list maintained here. This started as a
+  // hand-written alternation and grew by one word per false positive found,
+  // which is a list that is always one sentence behind — and a second place to
+  // remember. One mechanism, one place to add a word.
   for (const v of [...out]) {
-    out.add(v.replace(/^(?:on|at|as|in|for|with|to|by|from|my|our|their|his|her|its)\s+/, "").trim());
+    const parts = v.split(/\s+/);
+    let i = 0;
+    // Never strip the last word: a run that is entirely function words is
+    // already handled above, and something must remain to look up.
+    while (i < parts.length - 1 && STOPLIST.has(parts[i]!)) i++;
+    if (i > 0) out.add(parts.slice(i).join(" "));
   }
   // Initialisms are written both ways: the profile records "BS", the sentence
   // writes "B.S.". Dots are punctuation here, not identity.

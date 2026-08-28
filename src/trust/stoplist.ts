@@ -25,4 +25,7 @@ export const STOPLIST = new Set([
   "react", "node", "docker", "kubernetes", "postgres", "postgresql", "redis", "kafka",
   "aws", "gcp", "azure", "linux", "git", "github", "api", "apis", "sql", "graphql",
   "ci", "cd", "ml", "ai", "llm", "sdk", "http", "rest", "grpc", "json",
+  // Subordinating conjunctions and pronouns that open a clause. A capitalised
+  // "If", "When", or "While" lands inside a capital run and is not a name.
+  "if", "when", "while", "although", "because", "since", "though", "unless", "whether", "after", "before", "during", "it", "its", "his", "her", "from", "by",
 ]);
