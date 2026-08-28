@@ -63,8 +63,32 @@ export const PAGE_SCRIPT: string = readFileSync(
  */
 let generation = Math.floor(Date.now() / 1000);
 
+/**
+ * How long to give a client-rendered page that reported nothing to act on.
+ *
+ * One retry, not a blanket wait: it costs nothing on a page that already has
+ * controls, which is almost all of them.
+ */
+const EMPTY_RETRY_MS = 1_500;
+
 /** Take a fresh ref'd snapshot of the page, bumping the generation (spec §8.2). */
 export async function readPage(page: Page): Promise<Snapshot> {
+  const first = await snapshotOnce(page);
+  // A page with nothing actionable is usually a page that has not finished
+  // rendering. `settle()` waits for network-idle and a stable DOM, and an SPA
+  // can clear both before it mounts its form — a live Ashby application page
+  // does exactly that, and Clippy reported STUCK at 0 steps against a form that
+  // appeared a second and a half later.
+  //
+  // An observation that found nothing should confirm nothing is there, for the
+  // same reason an effect must prove it landed (§7.6): "I saw no fields" and
+  // "there are no fields" are different claims, and only one of them is earned.
+  if (first.nodes.length > 0) return first;
+  await page.waitForTimeout(EMPTY_RETRY_MS);
+  return await snapshotOnce(page);
+}
+
+async function snapshotOnce(page: Page): Promise<Snapshot> {
   const gen = ++generation;
   const { nodes, formless, text } = (await page.evaluate(
     ({ src, g }: { src: string; g: number }) => ({
