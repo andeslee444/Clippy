@@ -47,7 +47,7 @@ export async function resolve(page: Page, ref: Ref): Promise<Resolved> {
   // so it is not subject to the serialisation hazard in §8.2.
   const facts = await locator.evaluate((el) => ({
     submitCapable: el.getAttribute("data-clippy-submit") === "1",
-    formless: el.ownerDocument.querySelector("form") === null,
+    formAssociated: el.closest("form") !== null,
   }));
   return { locator, facts };
 }

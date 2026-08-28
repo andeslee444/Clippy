@@ -22,7 +22,7 @@ function fakePage(
     count: async () => (found ? 1 : 0),
     getAttribute: async (n: string) =>
       n === "data-clippy-submit" && opts.submitCapable ? "1" : null,
-    evaluate: async () => ({ submitCapable: Boolean(opts.submitCapable), formless: false }),
+    evaluate: async () => ({ submitCapable: Boolean(opts.submitCapable), formAssociated: true }),
     click: vi.fn(async () => { calls.push("click"); }),
     fill: vi.fn(async (v: string) => { calls.push(`fill:${v}`); }),
     inputValue: async () => (opts.swallowsFill ? "" : "written"),

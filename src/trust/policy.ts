@@ -28,7 +28,10 @@ export function isGated(effect: Effect, facts?: ElementFacts): boolean {
   // Rather than read "not flagged" as "safe", gate every click. Costs friction
   // on form-less SPAs (Workday); the alternative is a silent hole on one of the
   // three major ATS platforms.
-  if (facts.formless && effect.kind === "click") return true;
+  // A click on an element OUTSIDE any form. `submitCapable` cannot speak for it
+  // — a <button> outside a form is never flagged however it is wired — so the
+  // absence of evidence is not evidence of safety, and it gates.
+  if (!facts.formAssociated && effect.kind === "click") return true;
 
   return false;
 }

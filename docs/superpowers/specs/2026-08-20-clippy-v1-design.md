@@ -259,6 +259,47 @@ rendered tree and tell the model that the Submit button is named "Cancel".
 The static `TOOL_META` table remains the floor, not the ceiling — element-derived properties can
 only ever *add* gating, never remove it.
 
+#### Both derived signals must be element-scoped
+
+**Added 2026-08-27, after finding a live posting Clippy could have submitted without asking.**
+
+The two signals disagreed about their own scope. `submitCapable` asked an element question — *is
+this `<button>` inside a form?* — while `formless` asked a page question: *does the document contain
+any `<form>` at all?* The mismatch was deliberate and documented, reasoned from a Workday page with
+zero forms, and it is correct for a page with **no** forms and for a page that is **all** form. It
+fails for the mixed case in between, which is the common one:
+
+| | |
+|---|---|
+| A footer newsletter `<form>` | ⇒ page-level `formless` = **false** |
+| Application submit button rendered outside it | ⇒ `submitCapable` = **false** |
+| `isGated({kind:"click"})` | ⇒ **not gated** |
+
+Clippy would click "Submit Application" without asking, and send a real application under the user's
+name. Reproduced on a live Ashby posting, where the submit button has exactly this shape — there,
+only the accident of Ashby rendering **no** `<form>` anywhere kept it gated. One newsletter signup in
+the footer would have removed the protection.
+
+The signal is now `formAssociated`, element-scoped, which is what this section specified all along:
+
+```
+formAssociated = el.closest("form") !== null
+gate a click when !formAssociated
+```
+
+The reasoning is the same fail-closed rule stated at the top, applied to the right question. When an
+element sits outside every form, `submitCapable` **cannot speak for it** — a `<button>` outside a
+form is never flagged, however it is wired. Absence of evidence is not evidence of safety.
+
+The cost is friction: a benign expander outside a form now gates. That is the correct direction to
+be wrong in, and it is the direction §7.1 exists to enforce.
+
+Covered by eval flow **F10**, which asserts the derivation directly rather than looking for a gated
+`click` in the audit log — the model called `submit` on that button, correctly, so a log-based check
+observed nothing at all. Whether a safety regression is covered must never depend on which tool name
+the model happens to choose; that the chosen kind is untrustworthy is the premise of this whole
+section.
+
 **The author's decision lives in two places**, and the table is the more consequential one:
 `TOOL_META` (is `upload` really reversible? is `navigate` outward-facing?) and the `isGated()`
 predicate combining static flags with element-derived properties.

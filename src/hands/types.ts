@@ -48,15 +48,24 @@ export interface ElementFacts {
   /** Activating this element submits a form. Derived from the DOM. */
   submitCapable: boolean;
   /**
-   * The page contains no `<form>` at all, so `submitCapable` is unreliable here.
+   * This element sits inside a `<form>`, so `submitCapable` can speak for it.
    *
-   * Measured against a real Workday job page: zero `<form>` elements, everything
-   * driven by click handlers. `closest("form")` returns null for every element,
-   * so nothing is flagged — including the real submit button. Page-level rather
-   * than element-level, but it conditions how far `submitCapable` can be trusted,
-   * so it travels with it.
+   * When false, `submitCapable` is not evidence of anything: a `<button>` outside
+   * a form is never flagged, whatever it does. §7.1 names this `formAssociated`
+   * and it is deliberately ELEMENT-scoped.
+   *
+   * It was page-scoped ("the page contains no form at all"), reasoned from a
+   * Workday page with zero forms. That reasoning holds for a page with no forms
+   * and a page that is all form, and fails for the mixed case in between —
+   * which is the common one. A footer newsletter `<form>` makes the page
+   * form-ful, so the page-level flag reads false; an application submit button
+   * rendered outside that form is not `closest("form")`, so `submitCapable`
+   * reads false too. Both gate clauses miss and the click goes through ungated.
+   *
+   * Verified on a live Ashby posting, where "Submit Application" is exactly this
+   * shape and only the accident of Ashby having NO form anywhere kept it gated.
    */
-  formless: boolean;
+  formAssociated: boolean;
 }
 
 /**

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Senior Product Manager — Halyard Systems</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; }
+    label { display: block; margin: 14px 0 4px; font-weight: 600; }
+    input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; font: inherit; }
+    button { padding: 9px 18px; border-radius: 6px; border: 1px solid #333; background: #222; color: #fff; font: inherit; cursor: pointer; }
+    footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 13px; }
+    footer input { width: auto; }
+  </style>
+</head>
+<body>
+<!--
+  The MIXED case, and the one that was ungated.
+
+  The application is NOT wrapped in a <form> — it is a React-shaped panel whose
+  submit button is an ordinary <button> with a click handler. Meanwhile the page
+  DOES contain a <form>, down in the footer, for the newsletter.
+
+  So the two gate signals used to disagree in the worst possible direction:
+  page-level `formless` read false because of the footer form, and
+  `submitCapable` read false because the button is not inside any form. Neither
+  clause fired and "Submit Application" was clickable without approval.
+
+  Modelled on a live Ashby posting, where the submit button has exactly this
+  shape. There, only the accident of the page having no <form> ANYWHERE kept it
+  gated — remove that accident, as this fixture does, and the protection is gone.
+-->
+<h1>Senior Product Manager</h1>
+<p>Halyard Systems — New York, NY</p>
+<p>We are hiring a senior product manager to own our ingestion platform.
+Experience with data pipelines and a track record of shipping is required.</p>
+
+<div id="application">
+  <label for="fn">First name*</label>
+  <input id="fn" name="first_name" />
+
+  <label for="ln">Last name*</label>
+  <input id="ln" name="last_name" />
+
+  <label for="em">Email*</label>
+  <input id="em" name="email" type="email" />
+
+  <label for="ph">Phone*</label>
+  <input id="ph" name="phone" />
+
+  <p style="margin-top:22px">
+    <button id="send" type="button">Submit Application</button>
+  </p>
+</div>
+
+<footer>
+  <form id="newsletter">
+    <label for="nl">Job alerts</label>
+    <input id="nl" type="email" aria-label="Newsletter email" />
+    <button>Sign up</button>
+  </form>
+</footer>
+
+<script>
+  document.getElementById('send').addEventListener('click', function () {
+    window.__SUBMITTED__ = true;
+    document.getElementById('application').innerHTML = '<h2>Application received.</h2>';
+  });
+</script>
+</body>
+</html>

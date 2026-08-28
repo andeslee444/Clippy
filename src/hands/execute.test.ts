@@ -100,7 +100,7 @@ describe("GatedExecutor.runEffect", () => {
     const { audit } = fakeAudit();
     const perform = vi.fn(async () => {});
     const requestApproval = vi.fn(async () => true);
-    const facts: ElementFacts = { submitCapable: true, formless: false };
+    const facts: ElementFacts = { submitCapable: true, formAssociated: true };
     const resolveFacts = vi.fn(async () => facts);
     const executor = new GatedExecutor({ audit, resolveFacts, perform, requestApproval });
 
@@ -113,7 +113,7 @@ describe("GatedExecutor.runEffect", () => {
     const { audit } = fakeAudit();
     const perform = vi.fn(async () => {});
     const requestApproval = vi.fn(async () => true);
-    const facts: ElementFacts = { submitCapable: false, formless: true };
+    const facts: ElementFacts = { submitCapable: false, formAssociated: false };
     const resolveFacts = vi.fn(async () => facts);
     const executor = new GatedExecutor({ audit, resolveFacts, perform, requestApproval });
 

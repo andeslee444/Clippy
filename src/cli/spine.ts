@@ -59,8 +59,8 @@ const executor = new GatedExecutor({
   requestApproval: async (effect, facts) => {
     const why = facts?.submitCapable
       ? "element submits a form"
-      : facts?.formless
-        ? "page has no <form>, so submit detection is unavailable"
+      : facts && !facts.formAssociated
+        ? "element is outside any <form>, so submit detection cannot clear it"
         : "irreversible or outward-facing";
     console.log(`\n⏸  GATED: ${effect.kind} — ${why}`);
     console.log(`   ${JSON.stringify(effect)}`);
